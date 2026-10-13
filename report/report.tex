@@ -1,0 +1,1110 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,decorations.pathmorphing}
+\usepackage[hidelinks]{hyperref}
+
+% Figures are read from ../figures/ when this file sits in report/.
+% On Overleaf, upload the five PNGs next to this file or into a figures/ folder.
+\graphicspath{{../figures/}{figures/}{./}}
+
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+\captionsetup{font=small,labelfont=bf}
+
+\definecolor{lakeblue}{HTML}{2A78D6}
+\definecolor{evaporange}{HTML}{EB6834}
+\definecolor{runoffgreen}{HTML}{1BAF7A}
+\definecolor{ink}{HTML}{0B0B0B}
+\definecolor{muted}{HTML}{898781}
+\definecolor{codebg}{HTML}{F4F4F4}
+\definecolor{codestring}{HTML}{A31515}
+\definecolor{codecomment}{HTML}{6A737D}
+
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue},
+  stringstyle=\color{codestring},
+  commentstyle=\color{codecomment}\itshape,
+  backgroundcolor=\color{codebg},
+  numbers=left,
+  numberstyle=\tiny\color{muted},
+  numbersep=6pt,
+  frame=single,
+  rulecolor=\color{black!30},
+  breaklines=true,
+  showstringspaces=false,
+  columns=fullflexible,
+  keepspaces=true,
+  captionpos=b,
+  xleftmargin=1.5em,
+  framexleftmargin=1.5em,
+}
+
+\newcommand{\dL}{\Delta L}
+\newcommand{\cms}{\mathrm{m^{3}\,s^{-1}}}
+
+\title{Forecasting Lake Michigan--Huron Water Levels\\ One to Six Months Ahead:\\[2pt]
+\large Does Machine Learning Add Skill Beyond a Water-Balance Model?}
+\author{Samundra Pathak\\ University of Wisconsin--Green Bay}
+\date{October 12, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Lake Michigan--Huron rose 1.88\,m between its record low in January 2013 and a near-record
+high in July 2020. This study asks whether a machine-learning model can forecast the monthly
+mean lake level one to six months ahead better than (1) the assumption that the level does not
+change and (2) a simple regression built on the lake's water balance. Seventy-four years of
+public NOAA and GLOS data (1950--2023) were merged into one monthly table of level,
+over-lake precipitation, evaporation and runoff. Five forecast models were compared in a
+rolling-origin backtest over 44 test years (1980--2023): persistence, seasonal climatology, a
+19-parameter water-balance regression, gradient-boosted trees, and a hybrid in which the trees
+correct the water-balance errors. Every model roughly halves the error of persistence, but most
+of that gain comes from the seasonal cycle alone. The water-balance model reached a
+root-mean-square error of 3.22\,cm at one month and 14.66\,cm at six months. Gradient boosting
+was slightly worse at every horizon (3.32\,cm and 15.39\,cm), with differences inside the
+sampling uncertainty, and the hybrid was no better than the water-balance model. When the same
+water-balance model was given the precipitation, evaporation and runoff that actually occurred,
+its error fell to 2.39\,cm and 8.49\,cm. The limit on forecast skill is therefore the unknown
+future weather, not the flexibility of the model.
+\end{abstract}
+
+% ---------------------------------------------------------------------------
+\section{Introduction}
+
+Lakes Michigan and Huron are joined at the Straits of Mackinac and stand at the same elevation,
+so hydraulically they are one lake with a surface area of about 117{,}400\,km$^2$. Its level
+matters to shoreline property, shipping, harbours and wetlands, and it moves slowly but far:
+the record low of January 2013 was followed seven years later by a near-record high.
+
+Forecasting that level looks like a natural machine-learning problem, because long records of
+the level and of the water entering and leaving the lake are public. It is also a problem with
+well-understood physics: the level changes only because water is added or removed. This study
+uses that fact as a test. A model that knows the structure of the water balance is compared
+with a flexible machine-learning model that is given the same information and has to find the
+structure by itself.
+
+The question is narrow and testable: when forecasting the monthly mean level one to six months
+ahead, does gradient boosting beat persistence, and does it beat a physics-based water-balance
+regression? The goal is an honest comparison, including the case where machine learning does
+not win.
+
+% ---------------------------------------------------------------------------
+\section{Physical Background}
+\label{sec:physics}
+
+\subsection{Conservation of mass for a lake}
+
+The volume of water stored in the lake, $V$, changes only through the fluxes across its
+boundary (Figure~\ref{fig:schematic}):
+\begin{equation}
+\frac{dV}{dt} = A\,(p - e) + Q_R + Q_{\mathrm{in}} - Q_{\mathrm{out}},
+\label{eq:volume}
+\end{equation}
+where $A$ is the lake surface area, $p$ and $e$ are the precipitation and evaporation rates
+per unit area of lake surface, $Q_R$ is the river runoff from the surrounding land basin,
+$Q_{\mathrm{in}}$ is the inflow from Lake Superior through the St.~Marys River, and
+$Q_{\mathrm{out}}$ is the outflow to Lake St.~Clair through the St.~Clair River. Smaller terms
+(groundwater exchange, the Chicago diversion, and thermal expansion of the water column) are
+neglected.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[>=Stealth, font=\small]
+  % land
+  \fill[black!8] (-5.2,-1.6) rectangle (5.2,0.55);
+  % lake basin
+  \fill[lakeblue!25] (-3,0.25) -- (-2.5,-1.3) -- (2.5,-1.3) -- (3,0.25) -- cycle;
+  \draw[lakeblue, thick, decorate, decoration={snake, amplitude=0.5mm, segment length=5mm}]
+        (-3,0.25) -- (3,0.25);
+  \draw[black!55, thick] (-3,0.25) -- (-2.5,-1.3) -- (2.5,-1.3) -- (3,0.25);
+  \node[lakeblue!55!black] at (0,-0.5) {Lake Michigan--Huron};
+  \node[lakeblue!55!black] at (0,-0.95) {\footnotesize area $A$, level $L$, volume $V$};
+  % precipitation
+  \draw[->, very thick, lakeblue] (-1.3,2.2) -- (-1.3,0.45);
+  \node[lakeblue, align=center] at (-1.3,2.6) {Precipitation $P$};
+  % evaporation
+  \draw[->, very thick, evaporange] (1.3,0.45) -- (1.3,2.2);
+  \node[evaporange, align=center] at (1.3,2.6) {Evaporation $E$};
+  % runoff
+  \draw[->, very thick, runoffgreen] (-0.2,-2.5) -- (-0.2,-1.4);
+  \node[runoffgreen, align=center] at (-0.2,-2.85) {Runoff $R$ from the land basin};
+  % channels
+  \draw[->, very thick, ink] (-5.1,-0.15) -- (-3.05,-0.15);
+  \node[align=center] at (-4.1,0.95) {St.~Marys River\\ inflow $Q_{\mathrm{in}}$};
+  \draw[->, very thick, ink] (3.05,-0.15) -- (5.1,-0.15);
+  \node[align=center] at (4.1,0.95) {St.~Clair River\\ outflow $Q_{\mathrm{out}}$};
+\end{tikzpicture}
+\caption{The water budget of Lake Michigan--Huron. Precipitation, evaporation and runoff are in
+the dataset and together form the net basin supply. The two connecting-channel flows are not in
+the dataset.}
+\label{fig:schematic}
+\end{figure}
+
+The shoreline is steep enough that the area barely changes over the observed range of levels
+(about 2\,m), so $A$ can be treated as constant and $dV = A\,dL$. Dividing
+Equation~\ref{eq:volume} by $A$ turns every term into a depth of water over the lake per unit
+time:
+\begin{equation}
+\frac{dL}{dt} = p - e + \frac{Q_R}{A} + \frac{Q_{\mathrm{in}} - Q_{\mathrm{out}}}{A}.
+\label{eq:level}
+\end{equation}
+
+\subsection{Net basin supply}
+
+Integrating Equation~\ref{eq:level} over one month gives the three supply terms as depths in
+millimetres: $P_t$, $E_t$ and $R_t$ for month $t$. Their combination is the \emph{net basin
+supply},
+\begin{equation}
+\mathrm{NBS}_t = P_t - E_t + R_t ,
+\label{eq:nbs}
+\end{equation}
+which is the amount the lake would rise in month $t$ if nothing flowed in or out through the
+connecting channels.
+
+Precipitation and evaporation are published as depths over each lake separately. They are
+combined as an area-weighted average,
+\begin{equation}
+P_t = w_M P_t^{\mathrm{Mic}} + w_H P_t^{\mathrm{Hur}}, \qquad
+w_M = \frac{A_M}{A_M + A_H}, \quad w_H = 1 - w_M ,
+\label{eq:areaweight}
+\end{equation}
+and likewise for $E_t$, with $A_M = 57{,}800\,\mathrm{km^2}$ and
+$A_H = 59{,}600\,\mathrm{km^2}$~\cite{epa}, so $w_M = 0.492$.
+
+Runoff is published as a flow in $\cms$ for each basin. Flows add, so the two basins are summed
+and the monthly volume is spread over the combined lake:
+\begin{equation}
+R_t = \frac{\left(Q_t^{\mathrm{Mic}} + Q_t^{\mathrm{Hur}}\right)\, N_t \times 86{,}400\ \mathrm{s}}
+           {A_M + A_H} \times 1000\ \mathrm{mm\,m^{-1}},
+\label{eq:runoffdepth}
+\end{equation}
+where $N_t$ is the number of days in month $t$. As a check on the scale, a combined runoff of
+$1500\,\cms$ over a 30-day month is $3.9\times10^{9}\,\mathrm{m^3}$, which is 33\,mm over
+$1.174\times10^{11}\,\mathrm{m^2}$. Because the lake is so large, a month of supply moves the
+level by only a few centimetres.
+
+\subsection{Why the level change spans two months of supply}
+\label{sec:twolags}
+
+The level record is a series of monthly \emph{means}, not end-of-month values. Suppose the
+level rises at a constant rate $s_t$ (in mm per month) during month $t$, and let $\ell$ be the
+level at the boundary between months $t-1$ and $t$. The mean level in month $t$ is then
+$\ell + \tfrac12 s_t$, and the mean in month $t-1$ is $\ell - \tfrac12 s_{t-1}$. The change
+between the two monthly means is
+\begin{equation}
+\dL_t \equiv L_t - L_{t-1} = \tfrac12\,s_{t-1} + \tfrac12\,s_t .
+\label{eq:twomonth}
+\end{equation}
+The change in the monthly mean level therefore depends equally on the supply of the current
+and the previous month. This is why Figure~\ref{fig:wbcheck} uses a two-month mean of NBS, and
+why the water-balance model in Section~\ref{sec:wbmodel} carries two lags of every supply term.
+
+\subsection{Outflow depends on the level}
+
+The channel flows are not in the dataset, but their behaviour is known in outline. The
+St.~Clair River is an unregulated channel, so its discharge increases with the level of the
+lake that feeds it. Linearising about a reference level $L_{\mathrm{ref}}$,
+\begin{equation}
+Q_{\mathrm{out}} \approx Q_0 + k\,(L - L_{\mathrm{ref}}), \qquad k > 0 .
+\label{eq:stage}
+\end{equation}
+Substituting into Equation~\ref{eq:level}, the channel term becomes a constant net loss plus a
+restoring term proportional to the level:
+\begin{equation}
+\frac{dL}{dt} = \mathrm{NBS} - c - \frac{k}{A}\,(L - L_{\mathrm{ref}}),
+\qquad c = \frac{Q_0 - Q_{\mathrm{in}}}{A}.
+\label{eq:relax}
+\end{equation}
+Equation~\ref{eq:relax} is a first-order relaxation. A high lake drains faster and a low lake
+drains more slowly, so the level is pulled back towards an equilibrium with an e-folding time
+\begin{equation}
+\tau = \frac{A}{k}.
+\label{eq:tau}
+\end{equation}
+The lake acts as a low-pass filter on the supply: a single wet month has a small effect, while
+several wet years in a row can raise the level by more than a metre.
+
+\subsection{The seasonal cycle of supply}
+
+Each supply term has a strong seasonal cycle (Figure~\ref{fig:data}, right). Runoff peaks in
+spring, when the winter snowpack melts. Evaporation from a lake follows the bulk aerodynamic
+relation
+\begin{equation}
+e \;\propto\; U\,\bigl[q_s(T_w) - q_a\bigr],
+\label{eq:bulk}
+\end{equation}
+where $U$ is the wind speed, $q_s(T_w)$ is the saturation specific humidity at the water
+surface temperature $T_w$, and $q_a$ is the specific humidity of the overlying air.
+Evaporation is therefore largest not in summer but in late autumn and early winter, when the
+water is still warm from summer and cold, dry air moves over it. Equation~\ref{eq:bulk} is
+included only to explain the shape of the cycle; the models in this study use the published
+evaporation depths and do not compute evaporation themselves.
+
+Together these cycles make the lake rise every spring and fall every autumn. A forecast that
+knows only the calendar already captures this, which is why a seasonal baseline is needed in
+addition to persistence.
+
+% ---------------------------------------------------------------------------
+\section{Data}
+
+\subsection{Sources}
+
+All data are public (Table~\ref{tab:data}). The raw files are kept unmodified and every
+transformation is done in code.
+
+\begin{table}[H]
+\centering
+\caption{Data sources. All series were used for January 1950 to December 2023.}
+\label{tab:data}
+\begin{tabular}{@{}p{5.2cm}p{6.2cm}l@{}}
+\toprule
+Variable & Source & Units \\
+\midrule
+Over-lake precipitation, Lakes Michigan and Huron & NOAA GLERL monthly hydrometeorological
+database (TM-083, updated files)~\cite{glerl} & mm per month \\
+Over-lake evaporation, Lakes Michigan and Huron & same & mm per month \\
+Basin runoff, area-ratio method, both basins & same & $\cms$ \\
+Monthly lake-wide mean level & GLOS Seagull ERDDAP, dataset
+\texttt{glisa\_general\_monthly\_huron}~\cite{glos} & m (IGLD 1985) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Building the monthly table}
+
+The two lakes were combined with Equations~\ref{eq:areaweight} and~\ref{eq:runoffdepth}, and
+NBS was computed with Equation~\ref{eq:nbs}. The level file is labelled ``Huron''. Its
+extremes, a minimum of 175.57\,m in January 2013 and a maximum of 177.50\,m in October 1986,
+match the published record low and record high for Lake Michigan--Huron, so it was treated as
+the combined-lake level.
+
+Lake Michigan evaporation for 1941--1944 is nearly identical from year to year and appears to
+be filled with modelled or climatological values, so the analysis starts in January 1950. The
+level file contains no values after December 2023. The merged table has 888 months with no
+gaps. Figure~\ref{fig:data} shows the level record and the average seasonal cycle of the three
+supply terms.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{fig1_data_overview.png}
+\caption{Left: monthly mean level of Lake Michigan--Huron, 1950--2023. Right: average seasonal
+cycle of the supply terms. Runoff peaks with spring snowmelt; evaporation peaks in late autumn
+and early winter.}
+\label{fig:data}
+\end{figure}
+
+\subsection{Target definition}
+
+The level this month is almost the same as the level last month, so a model can score well on
+the level itself simply by repeating the last value. The target is therefore the \emph{change}
+in level. For a forecast issued at the end of month $t$ (the origin) with horizon $h$ months,
+\begin{equation}
+y_{t,h} = L_{t+h} - L_t , \qquad h = 1,\dots,6 ,
+\label{eq:target}
+\end{equation}
+and the forecast level is $\hat L_{t+h} = L_t + \hat y_{t,h}$. The forecast may use levels and
+$P$, $E$, $R$ up to and including month $t$ and nothing later.
+
+\subsection{Does supply explain level change?}
+
+Before any modelling, Figure~\ref{fig:wbcheck} tests the water-balance picture directly. By
+Equation~\ref{eq:twomonth}, the change in the monthly mean level should follow the mean NBS of
+the current and previous month with a slope of 1. The observed correlation is 0.81 and the
+slope is 1.07. The intercept is $-69$\,mm per month. In Equation~\ref{eq:relax} this is the
+constant $c$: the average net loss through the connecting channels, which the dataset does not
+include. Spread over the lake area, 69\,mm per month corresponds to a net outflow of roughly
+$3{,}100\,\cms$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.6\textwidth]{fig2_water_balance_check.png}
+\caption{Monthly level change against net basin supply (mean of the current and previous
+month), 1950--2023.}
+\label{fig:wbcheck}
+\end{figure}
+
+% ---------------------------------------------------------------------------
+\section{Methodology}
+
+\subsection{Baseline models}
+
+\textbf{Persistence.} The level does not change:
+\begin{equation}
+\hat y_{t,h} = 0 .
+\label{eq:persistence}
+\end{equation}
+
+\textbf{Seasonal climatology.} Each future month changes by the long-term average change for
+that calendar month. If $\overline{\dL}_m$ is the mean of $\dL$ over all training months that
+fall in calendar month $m$, and $m(t)$ is the calendar month of month $t$, then
+\begin{equation}
+\hat y_{t,h} = \sum_{k=1}^{h} \overline{\dL}_{m(t+k)} .
+\label{eq:climatology}
+\end{equation}
+This baseline was added because a model that only learned the calendar would beat persistence
+easily, and that should not be mistaken for forecasting skill.
+
+\subsection{Water-balance model}
+\label{sec:wbmodel}
+
+The water-balance model is a linear regression with the structure of
+Equations~\ref{eq:twomonth} and~\ref{eq:relax}:
+\begin{equation}
+\dL_t = a_{m(t)} + \sum_{c \in \{P,E,R\}} \bigl( b_{c,0}\,X_{c,t} + b_{c,1}\,X_{c,t-1} \bigr)
+        + g\,\bigl(L_{t-1} - L_{\mathrm{ref}}\bigr) + \varepsilon_t ,
+\label{eq:wb}
+\end{equation}
+where $X_{P,t}$, $X_{E,t}$, $X_{R,t}$ are the precipitation, evaporation and runoff depths in
+month $t$ and $L_{\mathrm{ref}} = 176.5$\,m. There are 12 monthly intercepts, 6 supply
+coefficients and 1 level coefficient, 19 parameters in total, fitted by ordinary least
+squares.
+
+Each part has a physical meaning. The two lags per supply term come from the monthly averaging
+(Equation~\ref{eq:twomonth}). The monthly intercepts $a_m$ stand in for the mean net channel
+loss $c$, which varies through the year. The level coefficient $g$ plays the role of $-k/A$ in
+Equation~\ref{eq:relax} and should be negative. A perfect water budget would give
+$b_{P,0}+b_{P,1} = 1$, $b_{E,0}+b_{E,1} = -1$ and $b_{R,0}+b_{R,1} = 1$.
+
+\textbf{Forecasting with unknown future supply.} To forecast, future $P$, $E$ and $R$ are
+needed but unknown. Each is replaced by its calendar-month average $\overline{X}_{c,m}$ plus a
+decaying share of its latest anomaly, a first-order autoregression:
+\begin{equation}
+\hat X_{c,t+k} = \overline{X}_{c,m(t+k)} + \phi_c^{\,k}\,\bigl(X_{c,t} - \overline{X}_{c,m(t)}\bigr),
+\label{eq:ar1}
+\end{equation}
+where $\phi_c$ is the lag-one autocorrelation of the anomalies of component $c$ in the
+training data. The model is then stepped forward one month at a time,
+\begin{equation}
+\hat L_{t+k} = \hat L_{t+k-1} + \widehat{\dL}_{t+k}, \qquad \hat L_t = L_t ,
+\label{eq:recursion}
+\end{equation}
+with $\widehat{\dL}_{t+k}$ from Equation~\ref{eq:wb} using the forecast supply and the forecast
+level of the previous step.
+
+\textbf{Perfect forcing (diagnostic, not a forecast).} The same model is also run with the
+observed $X_{c,t+k}$ in place of Equation~\ref{eq:ar1}. This uses information from the future
+and is not a forecast. It measures how much of the error comes from not knowing future weather.
+
+\subsection{Gradient boosting}
+
+The machine-learning model is gradient-boosted regression trees~\cite{friedman}, using
+scikit-learn~\cite{sklearn}. A separate model is trained for each horizon $h$ and predicts
+$y_{t,h}$ directly from a feature vector $\mathbf{x}_t$. The prediction is a sum of $M$ small
+trees,
+\begin{equation}
+F_M(\mathbf{x}) = F_0 + \nu \sum_{m=1}^{M} T_m(\mathbf{x}),
+\label{eq:gb}
+\end{equation}
+where $F_0$ is the mean of the training targets and each tree $T_m$ is fitted to the residuals
+left by the trees before it,
+\begin{equation}
+r_i^{(m)} = y_i - F_{m-1}(\mathbf{x}_i),
+\label{eq:gbresid}
+\end{equation}
+which is the negative gradient of the squared-error loss. The learning rate $\nu$ shrinks the
+contribution of each tree. The settings were $M = 300$ trees of depth 3, $\nu = 0.03$, each
+tree fitted to a random 80\% of the rows, and at least 5 rows per leaf. They were fixed in
+advance and were not tuned on the test years.
+
+The 18 features contain the same information the water-balance model sees, plus longer memory
+(Table~\ref{tab:features}). All of them look backward only.
+
+\begin{table}[H]
+\centering
+\caption{Inputs to the gradient-boosting model at origin month $t$.}
+\label{tab:features}
+\begin{tabular}{@{}llc@{}}
+\toprule
+Group & Features & Count \\
+\midrule
+Current level & $L_t - L_{\mathrm{ref}}$ & 1 \\
+Recent level change & $\dL_t,\ \dL_{t-1},\ \dL_{t-2}$ & 3 \\
+Precipitation & $P_t,\ P_{t-1},\ P_{t-2}$ & 3 \\
+Evaporation & $E_t,\ E_{t-1},\ E_{t-2}$ & 3 \\
+Runoff & $R_t,\ R_{t-1},\ R_{t-2}$ & 3 \\
+Accumulated NBS & sums of NBS over the last 3, 6 and 12 months & 3 \\
+Season & $\sin(2\pi m/12),\ \cos(2\pi m/12)$ for calendar month $m$ & 2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Hybrid.} In the hybrid model the trees are trained on the errors of the water-balance
+forecast instead of on the level change:
+\begin{equation}
+\hat y^{\,\mathrm{hyb}}_{t,h} = \hat y^{\,\mathrm{WB}}_{t,h} + F^{(h)}_M(\mathbf{x}_t),
+\qquad F^{(h)}_M \ \text{trained on} \ \ y_{t,h} - \hat y^{\,\mathrm{WB}}_{t,h} .
+\label{eq:hybrid}
+\end{equation}
+This is the most direct test of whether machine learning can find structure that the
+physics-based model misses.
+
+\subsection{Rolling-origin backtest}
+
+A random train/test split would leak information, because neighbouring months are strongly
+correlated and the features use rolling windows. Instead, for each test year $Y$ from 1980 to
+2023, every model is refitted on all months before January of $Y$ and then forecasts each month
+of $Y$ at each horizon (Figure~\ref{fig:backtest}). The forecast for target month $T$ at
+horizon $h$ is issued from origin $T-h$. The first training set covers 1950--1979. This gives
+$44 \times 12 = 528$ forecasts per model and horizon, each made by a model that never saw the
+year being tested.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small, x=0.145cm, y=0.62cm]
+  % x axis: years 1950..2024 mapped to 0..74
+  \foreach \yr/\row in {1980/0, 1981/1, 1982/2} {
+    \pgfmathsetmacro{\xend}{\yr-1950}
+    \fill[lakeblue!55] (0,-\row) rectangle (\xend,-\row+0.6);
+    \fill[evaporange] (\xend,-\row) rectangle (\xend+1,-\row+0.6);
+    \node[anchor=east] at (-1,-\row+0.3) {$Y=\yr$};
+  }
+  \node at (37,-2.55) {$\vdots$};
+  \fill[lakeblue!55] (0,-4) rectangle (73,-4+0.6);
+  \fill[evaporange] (73,-4) rectangle (74,-4+0.6);
+  \node[anchor=east] at (-1,-4+0.3) {$Y=2023$};
+  % axis
+  \draw[->] (0,-4.5) -- (77,-4.5);
+  \foreach \yr in {1950,1960,1970,1980,1990,2000,2010,2020} {
+    \pgfmathsetmacro{\xx}{\yr-1950}
+    \draw (\xx,-4.5) -- (\xx,-4.7) node[below] {\footnotesize \yr};
+  }
+  % legend
+  \fill[lakeblue!55] (30,0.95) rectangle (33,1.45);
+  \node[anchor=west] at (33.5,1.2) {training months};
+  \fill[evaporange] (58,0.95) rectangle (61,1.45);
+  \node[anchor=west] at (61.5,1.2) {test year};
+\end{tikzpicture}
+\caption{Rolling-origin backtest. For each test year the models are trained only on earlier
+months, then the origin steps forward one year.}
+\label{fig:backtest}
+\end{figure}
+
+\subsection{Evaluation metrics}
+
+Accuracy is reported as the root-mean-square error of the forecast level, in centimetres, for
+each horizon:
+\begin{equation}
+\mathrm{RMSE}_h = \sqrt{\frac{1}{n}\sum_{i=1}^{n}\bigl(\hat L_{i,h} - L_{i}\bigr)^2},
+\label{eq:rmse}
+\end{equation}
+where the sum runs over the $n = 528$ target months. The improvement of a model over a
+reference model is the relative reduction in RMSE,
+\begin{equation}
+\mathrm{Skill}_h = 1 - \frac{\mathrm{RMSE}_h^{\mathrm{model}}}{\mathrm{RMSE}_h^{\mathrm{ref}}} .
+\label{eq:skill}
+\end{equation}
+
+To judge whether two models really differ, the 44 test years were resampled with replacement
+$B = 2000$ times. For each resample $b$ the difference
+$d^{(b)}_h = \mathrm{RMSE}^{A,(b)}_h - \mathrm{RMSE}^{B,(b)}_h$ was computed, and the 2.5th and
+97.5th percentiles of $d^{(b)}_h$ give a 95\% interval. Whole years are resampled as blocks
+because errors within a year, and across overlapping multi-month forecasts, are strongly
+correlated.
+
+The importance of a group of features $G$ to the gradient-boosting model is measured by
+permutation: the columns in $G$ are shuffled across the held-out rows, which destroys their
+information while keeping their distribution, and the increase in error is recorded,
+\begin{equation}
+I_G = \frac{1}{K}\sum_{k=1}^{K} \mathrm{RMSE}\bigl(\text{$G$ shuffled, repeat $k$}\bigr)
+      - \mathrm{RMSE}\bigl(\text{unshuffled}\bigr), \qquad K = 20 .
+\label{eq:perm}
+\end{equation}
+
+Table~\ref{tab:notation} summarises the notation.
+
+\begin{table}[H]
+\centering
+\caption{Notation.}
+\label{tab:notation}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Symbol & Meaning \\
+\midrule
+$t$ & Index of a month; the forecast origin \\
+$h$ & Forecast horizon in months ($1$ to $6$) \\
+$m(t)$ & Calendar month ($1$ to $12$) of month $t$ \\
+$L_t$ & Monthly mean lake level (m, IGLD 1985) \\
+$\dL_t$ & Change in monthly mean level, $L_t - L_{t-1}$ (mm) \\
+$y_{t,h}$ & Target: level change from month $t$ to month $t+h$ \\
+$P_t,\ E_t,\ R_t$ & Precipitation, evaporation, runoff as depth over the lake (mm per month) \\
+$\mathrm{NBS}_t$ & Net basin supply, $P_t - E_t + R_t$ \\
+$A_M,\ A_H,\ A$ & Surface areas of Lake Michigan, Lake Huron, and both combined \\
+$Q_R,\ Q_{\mathrm{in}},\ Q_{\mathrm{out}}$ & Runoff, St.~Marys inflow, St.~Clair outflow ($\cms$) \\
+$a_m$ & Monthly intercept of the water-balance model \\
+$b_{c,0},\ b_{c,1}$ & Coefficients of component $c$ in the current and previous month \\
+$g$ & Level coefficient (mm per month per metre of level) \\
+$\phi_c$ & Lag-one autocorrelation of the anomalies of component $c$ \\
+$\tau$ & E-folding time of the level, $A/k = -1/g$ \\
+$F_M,\ T_m,\ \nu$ & Boosted model, its $m$-th tree, and the learning rate \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------------
+\section{Results}
+
+\subsection{Accuracy by horizon}
+
+Table~\ref{tab:rmse} and Figure~\ref{fig:rmse} give the RMSE of every model at every horizon.
+
+\begin{table}[H]
+\centering
+\caption{RMSE of the forecast level (cm), test years 1980--2023. Bold marks the best real
+forecast at each horizon. The last row is a diagnostic that uses observed future supply and is
+not a forecast.}
+\label{tab:rmse}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+ & \multicolumn{6}{c}{Horizon (months ahead)} \\
+\cmidrule(l){2-7}
+Model & 1 & 2 & 3 & 4 & 5 & 6 \\
+\midrule
+Persistence & 6.73 & 12.37 & 17.06 & 20.73 & 23.30 & 24.81 \\
+Seasonal climatology & 4.14 & 7.06 & 9.48 & 11.63 & 13.53 & 15.27 \\
+Water balance & \textbf{3.22} & \textbf{6.33} & \textbf{8.82} & \textbf{11.03} & \textbf{12.96} & 14.66 \\
+Gradient boosting & 3.32 & 6.52 & 9.13 & 11.42 & 13.51 & 15.39 \\
+Hybrid (water balance + boosting) & 3.27 & 6.36 & 8.97 & 11.18 & 12.98 & \textbf{14.59} \\
+\midrule
+\emph{Water balance, perfect forcing} & \emph{2.39} & \emph{3.77} & \emph{5.08} & \emph{6.29} & \emph{7.43} & \emph{8.49} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{fig3_rmse_by_horizon.png}
+\caption{Left: RMSE by forecast horizon. Right: percentage reduction in RMSE relative to the
+seasonal-climatology baseline.}
+\label{fig:rmse}
+\end{figure}
+
+\textbf{All models beat persistence by a wide margin.} The water-balance model reduces
+persistence RMSE by 52\% at one month and 41\% at six months. But seasonal climatology alone
+already reduces it by 38--44\%. The seasonal cycle is the largest single source of
+predictability.
+
+\textbf{Skill beyond the seasonal cycle fades quickly.} Relative to seasonal climatology, the
+water-balance model reduces RMSE by 22\% at one month, 10\% at two months, 7\% at three months,
+and about 4\% at four to six months. Its advantage is statistically clear at one to three
+months (95\% intervals exclude zero) and not at four to six months.
+
+\textbf{Machine learning did not add skill.} Gradient boosting had higher RMSE than the
+water-balance model at every horizon. The gap grows from 0.10\,cm at one month to 0.72\,cm at
+six months, and each 95\% interval includes zero (for example $-0.02$ to $+0.23$\,cm at one
+month and $-0.16$ to $+1.62$\,cm at six months). The fair reading is ``no better, and possibly
+slightly worse''. At five and six months gradient boosting is no better than seasonal
+climatology.
+
+\textbf{The hybrid did not help either.} Letting gradient boosting correct the water-balance
+errors changed RMSE by between $-0.08$ and $+0.15$\,cm, with every interval spanning zero.
+There is no evidence in this dataset of systematic non-linear structure that the linear
+water-balance model leaves behind.
+
+\textbf{The ceiling is set by unknown future weather.} With perfect knowledge of future $P$,
+$E$ and $R$, the same water-balance model would have reached 2.39\,cm RMSE at one month and
+8.49\,cm at six months, which is 42--47\% below seasonal climatology at every horizon. The gap
+between this line and the real forecasts in Figure~\ref{fig:rmse} is far larger than any gap
+between the models.
+
+\subsection{What the water-balance model learned}
+
+Table~\ref{tab:coef} lists the coefficients of Equation~\ref{eq:wb} fitted to the full record.
+
+\begin{table}[H]
+\centering
+\caption{Water-balance coefficients fitted on 1950--2023, and the lag-one autocorrelation
+$\phi_c$ of each supply term's anomalies. The supply coefficients are dimensionless (mm of
+level change per mm of supply).}
+\label{tab:coef}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Component & $b_{c,0}$ & $b_{c,1}$ & Sum & Mass-balance value & $\phi_c$ \\
+\midrule
+Precipitation & $0.35$ & $0.53$ & $0.88$ & $+1$ & $0.02$ \\
+Evaporation & $-0.43$ & $-0.37$ & $-0.81$ & $-1$ & $0.26$ \\
+Runoff & $1.22$ & $0.61$ & $1.83$ & $+1$ & $0.45$ \\
+\midrule
+\multicolumn{6}{@{}l}{Level coefficient $g = -23$\,mm per month per metre of level} \\
+\multicolumn{6}{@{}l}{Monthly intercepts $a_m$ between $-136$ (October) and $-67$ (May) mm per month} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The coefficients are physically sensible in sign. Both lags of every component carry weight, as
+Equation~\ref{eq:twomonth} predicts. The sums for precipitation ($0.88$) and evaporation
+($-0.81$) are reasonably close to the $\pm1$ expected from mass balance.
+
+The level coefficient is negative, consistent with outflow that increases as the lake rises
+(Equation~\ref{eq:stage}). Its size, 23\,mm per month for each metre of level, corresponds
+through Equation~\ref{eq:tau} to
+\begin{equation}
+\tau = -\frac{1}{g} = \frac{1000\ \mathrm{mm}}{23\ \mathrm{mm\ per\ month}}
+     \approx 43\ \text{months} \approx 3.6\ \text{years},
+\label{eq:taufit}
+\end{equation}
+and to a stage--discharge slope $k = -gA$ of roughly $1{,}000\,\cms$ per metre of level. These
+are values implied by the regression, not measurements of the channel. They do show why the
+lake carries multi-year memory: an anomaly in the level decays over years, not months.
+
+The runoff coefficient sums to 1.83. Runoff should not raise the lake by more than its own
+volume, so runoff is acting as a proxy for something unmeasured. Plausible candidates are
+inflow from Lake Superior, which tends to be high in the same wet periods, and runoff from
+ungauged areas that the area-ratio method underestimates. The model should therefore be read
+as physics-structured, not as a closed water budget.
+
+The supply terms themselves are barely predictable from their own past: $\phi_c$ is 0.02 for
+precipitation, 0.26 for evaporation and 0.45 for runoff. In Equation~\ref{eq:ar1} the anomaly
+is multiplied by $\phi_c^{\,k}$, so even for runoff only $0.45^3 \approx 9\%$ of an anomaly is
+left after three months. This is why forecast skill decays so quickly: after a month or two,
+the best available guess for future supply is the seasonal average.
+
+\subsection{What the machine-learning model relies on}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{fig4_feature_importance.png}
+\caption{Permutation importance (Equation~\ref{eq:perm}) for the gradient-boosting model,
+trained on 1950--2009 and scored on 2010--2023. Each bar shows how much RMSE increases when one
+group of inputs is shuffled.}
+\label{fig:importance}
+\end{figure}
+
+At one month ahead the model uses recent runoff, the season, evaporation, the latest level
+change and precipitation, in that order (Figure~\ref{fig:importance}). This matches the
+physics: by Equation~\ref{eq:twomonth}, last month's supply is still working its way into this
+month's mean level. At three and six months the model is dominated by seasonal information. At
+six months the dominant group is evaporation and not the calendar month, but evaporation has
+such a strong seasonal cycle (Figure~\ref{fig:data}) that the model is most likely using it as
+another way of reading the time of year. Permutation importance cannot separate inputs that
+carry the same information, so the ranking among seasonal proxies should not be
+over-interpreted. The robust finding is that at longer horizons the model has learned the
+seasonal cycle and little else.
+
+\subsection{Case study: the 2013 low to the 2020 high}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{fig5_case_study_2013_2020.png}
+\caption{Left: observed level and six-month-ahead forecasts, 2012--2021. Right: cumulative
+anomalies of the supply terms from February 2013 to July 2020 relative to 1950--2012 monthly
+averages. Evaporation is plotted with its sign flipped so that upward always means more water
+in the lake.}
+\label{fig:case}
+\end{figure}
+
+Between January 2013 and July 2020 the lake rose 1.88\,m. Over that period, relative to the
+1950--2012 averages, over-lake precipitation delivered about 80\,cm of extra water and runoff
+about 83\,cm (Figure~\ref{fig:case}, right). Evaporation worked in the opposite direction: it
+was above average and removed about 59\,cm more than usual. The rise was therefore driven by a
+sustained wet period, not by reduced evaporation. The net supply anomaly of roughly $+1.0$\,m
+is smaller than the observed rise, and the remainder is not attributable with this dataset.
+Likely contributors are the seasonal rise from January to July (about 27\,cm on average), lower
+outflow while the lake was low (Equation~\ref{eq:stage}), and inflow from Lake Superior.
+
+Both the water-balance and gradient-boosting models tracked the rise at a six-month lead with
+similar accuracy (RMSE of 15.0 and 14.6\,cm for 2013--2020, against 26.7\,cm for persistence).
+Neither anticipated it. Figure~\ref{fig:case} shows both lagging the two steepest climbs, in
+2014 and 2019. This is the expected behaviour of any model that fills in future supply with
+averages (Equation~\ref{eq:ar1}): it can follow a multi-year rise step by step as the wet
+months arrive, but it cannot foresee that the next six months will be wet again.
+
+% ---------------------------------------------------------------------------
+\section{Discussion}
+
+The central result is that the two approaches reach almost the same accuracy, and the simpler
+one is never worse. The reason is visible in the physics. Equation~\ref{eq:level} is linear in
+the supply terms, so a linear regression with the right inputs already has the correct
+functional form. The trees have to rediscover that form from a few hundred training months and
+have nothing extra to gain from non-linearity. The hybrid model confirms this from the other
+side: when the trees are asked only for what the water-balance model missed, they find nothing
+systematic.
+
+The perfect-forcing diagnostic locates the real limit. Knowing the future supply would cut the
+error by 42--47\%, far more than any change of model. Precipitation anomalies have almost no
+month-to-month memory ($\phi_P = 0.02$), so no model that looks only at past supply can know
+whether the coming months will be wet.
+
+\textbf{Limitations.}
+\begin{enumerate}\setlength{\itemsep}{2pt}
+\item \emph{Level data end in December 2023.} The level file extends to 2025 but contains no
+values after 2023, so 2024 could not be tested.
+\item \emph{Early evaporation data.} Lake Michigan evaporation for 1941--1944 appears to be
+filled with modelled or climatological values. The analysis starts in 1950 to avoid it.
+\item \emph{Runoff coverage changes over time.} The gauged fraction of the basin varies
+(Michigan 0.78--0.98, Huron 0.74--0.93 during 1950--2023). It is recorded in the processed
+table as a data-quality covariate but is not used as a predictor. Coverage falls sharply in
+2024 (Huron about 60\% gauged) and runoff is missing after August 2024. This lies outside the
+analysis period but matters for any extension.
+\item \emph{No connecting-channel flows.} St.~Marys inflow, St.~Clair outflow and the Chicago
+diversion are not in the dataset. The model represents them only through monthly constants and
+a level term, and the inflated runoff coefficient suggests other terms are absorbing part of
+this gap.
+\item \emph{Slow drift.} Evaporation averaged 37--40\,mm per month in the 1970s--1990s and
+51--52\,mm per month since 2010. A model trained on earlier decades carries a small positive
+bias in later test years (1--2\,cm at six months for the real forecasts, 4.8\,cm for the
+perfect-forcing diagnostic).
+\item \emph{Level resolution.} Levels are reported to the nearest centimetre, which adds a
+small amount of rounding noise to monthly changes.
+\item \emph{Scope of the machine-learning test.} One algorithm with one fixed, untuned
+configuration was tested on a few hundred training months. The result shows that a reasonable
+off-the-shelf model does not beat the water-balance model here. It does not show that no
+machine-learning approach could.
+\item \emph{Data availability lag.} $P$, $E$ and $R$ for month $t$ are assumed to be available
+at the end of month $t$. In practice these estimates are published with a delay, so
+operational skill would be somewhat lower.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section{Conclusion}
+
+For monthly Lake Michigan--Huron levels, a 19-parameter water-balance regression is at least as
+accurate as gradient boosting at every horizon from one to six months, and a hybrid of the two
+is no better than the water-balance model alone. Most of the achievable improvement over
+persistence comes from the seasonal cycle. Knowledge of recent supply adds a further 22\% at
+one month and little beyond three months. The diagnostic run with observed weather shows that
+forecast error could be cut by nearly half if future precipitation, evaporation and runoff were
+known.
+
+The practical implication is that the next gain is more likely to come from better inputs than
+from a more flexible model: seasonal climate forecasts of precipitation and temperature,
+snowpack at the end of winter (which controls spring runoff), lake surface temperature and ice
+cover (which control evaporation through Equation~\ref{eq:bulk}), and measured
+connecting-channel flows. Machine learning may well earn its place once those inputs are
+available, and this backtest provides the baseline against which to test that.
+
+% ---------------------------------------------------------------------------
+\begin{thebibliography}{9}
+
+\bibitem{glerl}
+NOAA Great Lakes Environmental Research Laboratory.
+\emph{Great Lakes monthly hydrologic data} (Technical Memorandum GLERL-083, updated files).
+\url{https://www.glerl.noaa.gov/pubs/tech_reports/glerl-083/UpdatedFiles/}
+
+\bibitem{glos}
+Great Lakes Observing System.
+Seagull ERDDAP, dataset \texttt{glisa\_general\_monthly\_huron}.
+\url{https://seagull-erddap.glos.org/erddap/tabledap/glisa_general_monthly_huron.csv}
+(downloaded 12 October 2026).
+
+\bibitem{epa}
+U.S. Environmental Protection Agency.
+\emph{Physical Features of the Great Lakes}.
+\url{https://www.epa.gov/greatlakes/physical-features-great-lakes}
+
+\bibitem{friedman}
+J. H. Friedman.
+Greedy function approximation: a gradient boosting machine.
+\emph{Annals of Statistics}, 29(5):1189--1232, 2001.
+
+\bibitem{sklearn}
+F. Pedregosa et al.
+Scikit-learn: machine learning in Python.
+\emph{Journal of Machine Learning Research}, 12:2825--2830, 2011.
+
+\end{thebibliography}
+
+% ---------------------------------------------------------------------------
+\appendix
+\section{Code Listing}
+
+The listings below are the core of the pipeline. The code is in three notebooks:
+\begin{itemize}\setlength{\itemsep}{0pt}
+\item \texttt{function\_declaration.ipynb} defines every function and class;
+\item \texttt{data\_processing.ipynb} builds the monthly table from the raw files;
+\item \texttt{main.ipynb} runs the models, the backtest and the figures.
+\end{itemize}
+
+\begin{lstlisting}[caption={Runoff conversion (Equation~\ref{eq:runoffdepth}) and the merged monthly table.}]
+def runoff_to_depth_mm(flow_cms: pd.Series) -> pd.Series:
+    """m^3/s over a month -> equivalent depth (mm) spread over the combined lake."""
+    seconds_in_month = flow_cms.index.days_in_month * 86_400
+    return flow_cms * seconds_in_month / AREA_COMBINED_M2 * 1000.0
+
+
+def build_monthly() -> pd.DataFrame:
+    w_mic = AREA_MIC_KM2 / (AREA_MIC_KM2 + AREA_HUR_KM2)
+    w_hur = 1.0 - w_mic
+
+    # Precip and evap are depths over each lake -> area-weighted average.
+    precip = w_mic * read_depth_table("prc_mic_lake.csv") + w_hur * read_depth_table(
+        "prc_hur_lake.csv"
+    )
+    evap = w_mic * read_depth_table("evaporation_mic.csv") + w_hur * read_depth_table(
+        "evaporation_hur.csv"
+    )
+
+    # Runoff is a volume flux -> add the two basins, then convert to depth.
+    ro_mic = read_runoff("runoff_mic_arm.csv")
+    ro_hur = read_runoff("runoff_hur_arm.csv")
+    runoff = runoff_to_depth_mm(ro_mic["flow_cms"] + ro_hur["flow_cms"])
+
+    df = pd.DataFrame(
+        {
+            "level_m": read_levels(),
+            "precip_mm": precip,
+            "evap_mm": evap,
+            "runoff_mm": runoff,
+            "frac_gauged_mic": ro_mic["fraction_gauged"],
+            "frac_gauged_hur": ro_hur["fraction_gauged"],
+        }
+    )
+    df["nbs_mm"] = df["precip_mm"] - df["evap_mm"] + df["runoff_mm"]
+    # Target: change in the monthly mean level from the previous month, in mm.
+    df["dlevel_mm"] = df["level_m"].diff() * 1000.0
+
+    df = df.loc[START:]
+    # Keep only the span where every series is observed.
+    complete = df[["level_m", "precip_mm", "evap_mm", "runoff_mm"]].notna().all(axis=1)
+    df = df.loc[: complete[complete].index.max()]
+    assert df.notna().all().all(), "unexpected gap inside the analysis period"
+    df.index.name = "month"
+    return df
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Baselines: persistence and seasonal climatology.}]
+class Persistence:
+    """The level does not change."""
+
+    def fit(self, train):
+        return self
+
+    def predict(self, df, origins, horizons):
+        return np.zeros((len(origins), len(horizons)))
+
+
+class SeasonalClimatology:
+    """Each future month changes by its long-term average for that calendar month."""
+
+    def fit(self, train):
+        self.mean_change_ = train["dlevel_mm"].groupby(month_of(train.index)).mean()
+        return self
+
+    def predict(self, df, origins, horizons):
+        out = np.zeros((len(origins), len(horizons)))
+        for i, origin in enumerate(origins):
+            steps = [self.mean_change_[(origin + k).month] for k in range(1, max(horizons) + 1)]
+            cum = np.cumsum(steps)
+            out[i] = [cum[h - 1] for h in horizons]
+        return out
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Water-balance model (Equations~\ref{eq:wb}--\ref{eq:recursion}).}]
+COMPONENTS = ["precip_mm", "evap_mm", "runoff_mm"]
+LEVEL_REF_M = 176.5  # only centres the level term; has no effect on forecasts
+
+
+class WaterBalance:
+    """Physics-structured regression, stepped forward one month at a time.
+
+        dL[t] = a[month] + sum_c (b0_c * X_c[t] + b1_c * X_c[t-1]) + g * (L[t-1] - ref)
+
+    for c in precipitation, evaporation, runoff.
+    - Two lags per component because levels are monthly *means*: the change
+      between two monthly means straddles two months of supply.
+    - a[month] + g * level stands in for the connecting-channel flows (St. Marys
+      in, St. Clair out), which we have no data for; outflow rises with level.
+
+    To forecast, future P/E/R are unknown, so each is replaced by its
+    calendar-month climatology plus a decaying share of the latest anomaly
+    (AR(1)). With perfect_forcing=True the observed future P/E/R are used
+    instead: not a real forecast, but an upper bound on what this model could
+    do with a perfect weather forecast.
+    """
+
+    def __init__(self, perfect_forcing=False):
+        self.perfect_forcing = perfect_forcing
+
+    def _design(self, month, x_now, x_prev, level_prev):
+        dummies = np.zeros((len(month), 12))
+        dummies[np.arange(len(month)), month - 1] = 1.0
+        return np.column_stack([dummies, x_now, x_prev, level_prev - LEVEL_REF_M])
+
+    def fit(self, train):
+        x = train[COMPONENTS].to_numpy()
+        month = month_of(train.index)
+        design = self._design(month[1:], x[1:], x[:-1], train["level_m"].to_numpy()[:-1])
+        target = train["dlevel_mm"].to_numpy()[1:]
+        self.coef_, *_ = np.linalg.lstsq(design, target, rcond=None)
+
+        # Forcing model: monthly climatology + AR(1) on the anomalies.
+        self.clim_ = train[COMPONENTS].groupby(month).mean()
+        anom = x - self.clim_.loc[month].to_numpy()
+        self.phi_ = np.array(
+            [np.corrcoef(anom[1:, j], anom[:-1, j])[0, 1] for j in range(len(COMPONENTS))]
+        )
+        return self
+
+    def predict(self, df, origins, horizons):
+        x_all = df[COMPONENTS]
+        out = np.zeros((len(origins), len(horizons)))
+        for i, origin in enumerate(origins):
+            x_prev = x_all.loc[origin].to_numpy()
+            anom = x_prev - self.clim_.loc[origin.month].to_numpy()
+            level_start = df.at[origin, "level_m"]
+            cum = 0.0
+            path = {}
+            for k in range(1, max(horizons) + 1):
+                target = origin + k
+                if self.perfect_forcing:
+                    x_now = x_all.loc[target].to_numpy()
+                else:
+                    x_now = self.clim_.loc[target.month].to_numpy() + self.phi_**k * anom
+                row = self._design(
+                    np.array([target.month]), x_now[None], x_prev[None],
+                    np.array([level_start + cum / 1000.0]),
+                )
+                cum += float(row @ self.coef_)
+                path[k] = cum
+                x_prev = x_now
+            out[i] = [path[h] for h in horizons]
+        return out
+
+    def coefficients(self) -> pd.Series:
+        names = [f"month_{m}" for m in range(1, 13)]
+        names += [f"{c}_lag0" for c in COMPONENTS] + [f"{c}_lag1" for c in COMPONENTS]
+        names += ["level_m"]
+        return pd.Series(self.coef_, index=names)
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Features and gradient boosting, including the hybrid (Equation~\ref{eq:hybrid}).}]
+def make_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Predictors available at the end of each month (row t uses data up to t only)."""
+    f = pd.DataFrame(index=df.index)
+    f["level"] = df["level_m"] - LEVEL_REF_M
+    for lag in range(3):
+        f[f"dlevel_lag{lag}"] = df["dlevel_mm"].shift(lag)
+        for c in COMPONENTS:
+            f[f"{c[:-3]}_lag{lag}"] = df[c].shift(lag)
+    for window in (3, 6, 12):
+        f[f"nbs_sum{window}"] = df["nbs_mm"].rolling(window).sum()
+    angle = 2 * np.pi * month_of(df.index) / 12
+    f["month_sin"] = np.sin(angle)
+    f["month_cos"] = np.cos(angle)
+    return f
+
+
+def _future_change(df, h):
+    """L[t+h] - L[t] in mm, aligned on t (NaN where t+h is past the end)."""
+    return (df["level_m"].shift(-h) - df["level_m"]) * 1000.0
+
+
+class GradientBoosting:
+    """Direct ML forecast: one gradient-boosted tree model per horizon.
+
+    Hyperparameters were fixed in advance (small, slow-learning, shallow trees
+    for a few hundred training rows) and were not tuned on the test years.
+    If `base` is given, the trees learn the *residual* of that model's forecast
+    instead of the level change itself (a physics + ML hybrid).
+    """
+
+    params = dict(n_estimators=300, learning_rate=0.03, max_depth=3,
+                  subsample=0.8, min_samples_leaf=5, random_state=0)
+
+    def __init__(self, base=None):
+        self.base = base
+
+    def fit(self, train):
+        self.models_ = {}
+        feats = make_features(train)
+        ok = feats.notna().all(axis=1)
+        if self.base is not None:
+            self.base.fit(train)
+        for h in range(1, 7):
+            y = _future_change(train, h)
+            rows = ok & y.notna()
+            origins = train.index[rows]
+            target = y[rows].to_numpy()
+            if self.base is not None:
+                target = target - self.base.predict(train, origins, [h])[:, 0]
+            self.models_[h] = GradientBoostingRegressor(**self.params).fit(
+                feats.loc[origins], target
+            )
+        return self
+
+    def predict(self, df, origins, horizons):
+        # Features are backward-looking, so computing them on the full table
+        # does not leak future information into a given origin's row.
+        feats = make_features(df).loc[origins]
+        out = np.column_stack([self.models_[h].predict(feats) for h in horizons])
+        if self.base is not None:
+            out = out + self.base.predict(df, origins, horizons)
+        return out
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Rolling-origin backtest, RMSE and the year-block bootstrap.}]
+def backtest(df: pd.DataFrame, first_test_year=FIRST_TEST_YEAR, verbose=True) -> pd.DataFrame:
+    """Return one row per (model, target month, horizon) with observed and predicted level."""
+    rows = []
+    for year in range(first_test_year, df.index.max().year + 1):
+        train = df.loc[: f"{year - 1}-12"]
+        targets = df.loc[f"{year}-01":f"{year}-12"].index
+        models = {name: m.fit(train) for name, m in all_models().items()}
+        for h in HORIZONS:
+            origins = targets - h
+            start = df.loc[origins, "level_m"].to_numpy()
+            observed = df.loc[targets, "level_m"].to_numpy()
+            for name, model in models.items():
+                change_mm = model.predict(df, origins, [h])[:, 0]
+                rows.append(pd.DataFrame({
+                    "model": name, "target": targets, "origin": origins, "horizon": h,
+                    "observed_m": observed, "predicted_m": start + change_mm / 1000.0,
+                }))
+        if verbose:
+            print(f"  tested {year}", end="\r")
+    preds = pd.concat(rows, ignore_index=True)
+    preds["error_cm"] = (preds["predicted_m"] - preds["observed_m"]) * 100.0
+    return preds
+
+
+def rmse_table(preds: pd.DataFrame) -> pd.DataFrame:
+    """RMSE (cm) with models as rows and horizons as columns."""
+    rmse = preds.groupby(["model", "horizon"], sort=False)["error_cm"].apply(
+        lambda e: np.sqrt(np.mean(e**2))
+    )
+    return rmse.unstack("horizon")
+
+
+def bootstrap_rmse_diff(preds, model_a, model_b, n_boot=2000, seed=0) -> pd.DataFrame:
+    """RMSE(a) - RMSE(b) per horizon with a 95% interval.
+
+    Whole test years are resampled together because errors within a year (and
+    across overlapping multi-month forecasts) are strongly correlated.
+    """
+    rng = np.random.default_rng(seed)
+    out = {}
+    for h in HORIZONS:
+        sq = {}
+        for name in (model_a, model_b):
+            p = preds[(preds["model"] == name) & (preds["horizon"] == h)]
+            sq[name] = (p["error_cm"] ** 2).groupby(p["target"].dt.year).agg(["sum", "count"])
+        years = sq[model_a].index.to_numpy()
+        a, b = sq[model_a].to_numpy(), sq[model_b].to_numpy()
+
+        def diff(idx):
+            return (np.sqrt(a[idx, 0].sum() / a[idx, 1].sum())
+                    - np.sqrt(b[idx, 0].sum() / b[idx, 1].sum()))
+
+        boots = [diff(rng.integers(0, len(years), len(years))) for _ in range(n_boot)]
+        lo, hi = np.percentile(boots, [2.5, 97.5])
+        out[h] = {"diff_cm": diff(np.arange(len(years))), "ci_low": lo, "ci_high": hi}
+    return pd.DataFrame(out).T.rename_axis("horizon")
+\end{lstlisting}
+
+\end{document}
