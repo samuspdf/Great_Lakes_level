@@ -10,7 +10,6 @@
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage[hidelinks]{hyperref}
-\usepackage{xurl}
 
 % Figures are read from ../figures/ when this file is compiled inside report/.
 % On Overleaf, upload the five PNGs next to this file or into a figures/ folder.
@@ -70,8 +69,11 @@ discuss the implications of these findings and suggest ways to improve the forec
 The water level of the Great Lakes matters to a lot of people. Shoreline property owners,
 shipping, harbors and wetlands all depend on it, and it can move a long way in only a few years.
 Lake Michigan--Huron reached its lowest level on record in January 2013. Only seven and a half
-years later, in July 2020, it was 1.88\,m higher and close to its record high. Being able to
-forecast the level a few months ahead is useful for anyone who has to plan around it.
+years later, in July 2020, it was 1.88\,m higher and close to its record high. The rise in 2013
+and 2014 alone was the fastest ever recorded on the lake over a two-year
+period~\cite{gronewold2016}, and water levels across all of the Great Lakes kept rising for
+several years after this period of record lows~\cite{gronewold2019}. Being able to forecast the
+level a few months ahead is useful for anyone who has to plan around it.
 
 Forecasting the lake level looks like a natural problem for machine learning, because long
 public records exist for the level and for the water entering and leaving the lake. But unlike
@@ -83,7 +85,7 @@ find the structure by itself.
 
 The lake that is used here is Lake Michigan--Huron. Lakes Michigan and Huron are joined at the
 Straits of Mackinac and stand at the same elevation, so hydraulically they behave as one lake
-with a surface area of about 117,400\,km$^2$. The goal of this case study is to build a complete
+with a surface area of about 117,400\,km$^2$~\cite{epa}. The goal of this case study is to build a complete
 forecasting pipeline and to answer one narrow question: when forecasting the monthly mean level
 one to six months ahead, does gradient boosting beat simple baselines, and does it beat a
 physics-based water-balance model? The comparison is meant to be honest, including the case
@@ -94,13 +96,14 @@ where machine learning does not win.
 \subsection{Source}
 
 All of the data used in this study is public. The monthly over-lake precipitation, over-lake
-evaporation and river runoff for Lake Michigan and Lake Huron were retrieved from the monthly
-hydrometeorological database of the NOAA Great Lakes Environmental Research Laboratory (GLERL).
-The monthly lake-wide mean water level was retrieved from the Seagull ERDDAP server of GLOS.
+evaporation and river runoff for Lake Michigan and Lake Huron were retrieved from the Great Lakes
+Monthly Hydrologic Data of the NOAA Great Lakes Environmental Research Laboratory
+(GLERL)~\cite{glerl}, a database described by Hunter et al.~\cite{hunter2015}. The monthly
+lake-wide mean water level was retrieved from the Seagull ERDDAP server of GLOS~\cite{glos}.
 Levels are given in meters above the International Great Lakes Datum of 1985 (IGLD 1985), the
 reference height used for all Great Lakes levels. In total, seven raw files were used
-(Table~\ref{tab:data}). The raw files were never modified; every change to the data was done in
-code.
+(Table~\ref{tab:data}), all of them downloaded on October 12, 2026. The raw files were never
+modified; every change to the data was done in code.
 
 \begin{table}[htbp]
 \centering
@@ -118,14 +121,8 @@ Lake level & GLOS & Michigan--Huron & m (IGLD 1985) & Jan 1918 -- Dec 2023 \\
 \end{tabular}
 \end{table}
 
-The files can be downloaded from these two locations:
-\begin{itemize}
-\item \textbf{NOAA GLERL}:\\
-\url{https://www.glerl.noaa.gov/pubs/tech_reports/glerl-083/UpdatedFiles/}
-\item \textbf{GLOS}:\\
-\url{https://seagull-erddap.glos.org/erddap/tabledap/glisa_general_monthly_huron.csv}
-\end{itemize}
-The surface areas of the two lakes were taken from the U.S.\ Environmental Protection Agency.
+The download links for both sources are given in the references. The surface areas of the two
+lakes were taken from the U.S.\ Environmental Protection Agency~\cite{epa}.
 
 Two things were checked before the files were used. First, the level file is labeled
 ``Huron''. Since Michigan and Huron are one lake, it should be the level of the combined lake,
@@ -177,7 +174,8 @@ scale, a typical combined runoff of 1,500\,m$^3$/s over a 30-day month is 33\,mm
 Because the lake is so large, one month of supply moves the level by only a few centimeters.
 
 \item \textbf{Net Basin Supply (NBS)}: Now that all three terms are depths in mm, they can be
-added:
+added. The result is the net basin supply, one of the standard hydrologic quantities for the
+Great Lakes~\cite{glerl}:
 \begin{equation}
 \mathrm{NBS}_t = P_t - E_t + R_t. \label{eq:nbs}
 \end{equation}
@@ -327,7 +325,8 @@ Neighboring months are strongly related and several features use rolling windows
 split would leak information from the test period into the training period. A single
 chronological split would avoid that, but it would test the models on only one stretch of years.
 
-Instead, a rolling-origin backtest was used. For each test year $Y$ from 1980 to 2023, every
+Instead, a rolling-origin backtest was used, which is also called evaluation on a rolling
+forecasting origin~\cite{fpp3}. For each test year $Y$ from 1980 to 2023, every
 model was trained again on all the months before January of year $Y$, and it then forecast every
 month of $Y$ at every horizon. The forecast for target month $T$ at horizon $h$ is issued from
 the origin $T - h$. After that, the training window grows by one year and the process repeats.
@@ -430,7 +429,7 @@ years, plus a fading share of how unusual the latest month was:
 \right), \label{eq:ar1}
 \end{equation}
 where $\phi_c$ is the correlation between one month's anomaly and the next month's anomaly in the
-training data. This is called a first-order autoregression, or AR(1). The model is then stepped
+training data. This is called a first-order autoregression, or AR(1)~\cite{fpp3}. The model is then stepped
 forward one month at a time, feeding its own predicted level back in:
 \begin{equation}
 \hat L_{t+k} = \hat L_{t+k-1} + \frac{\widehat{\Delta L}_{t+k}}{1000}, \qquad \hat L_t = L_t.
@@ -477,8 +476,9 @@ $\hat X_{c,t+k},\ \hat L_{t+k}$ & Forecast supply and forecast level $k$ months 
 
 \subsection{Gradient Boosting}
 
-The machine learning model of choice here was gradient boosting with regression trees, from the
-scikit-learn library. A regression tree splits the data with a series of yes-or-no questions
+The machine learning model of choice here was gradient boosting~\cite{friedman2001} with
+regression trees~\cite{cart}, from the scikit-learn library~\cite{sklearn}. A regression tree
+splits the data with a series of yes-or-no questions
 about the features (for example, \emph{was the runoff this month above 40\,mm?}) and predicts
 the average target of each final group, called a leaf. One small tree is a weak model on its
 own, but gradient boosting adds many of them together, and each new tree corrects the mistakes
@@ -496,7 +496,9 @@ shrinks the step of each tree, so the model learns slowly and is less likely to 
 
 A separate model was trained for each horizon $h = 1, \dots, 6$, and each one predicts $y_{t,h}$
 directly from the 18 features in Table~\ref{tab:features}. The settings were fixed in advance and
-were not tuned on the test years (Table~\ref{tab:gbsettings}).
+were not tuned on the test years (Table~\ref{tab:gbsettings}). Because each tree is fitted to a
+random part of the training rows, this version is called stochastic gradient
+boosting~\cite{friedman2002}.
 
 \begin{table}[htbp]
 \centering
@@ -571,14 +573,15 @@ over a reference model is the relative reduction in RMSE,
 \end{equation}
 
 A small difference in RMSE between two models could just be luck. To check whether a difference
-is real, the 44 test years were resampled with replacement 2,000 times (a bootstrap). For each
-resample, the RMSE difference between the two models was computed again, and the middle 95\% of
-the 2,000 differences gives a 95\% interval. Whole years were resampled together, because the
-errors within a year, and across overlapping multi-month forecasts, are strongly related to each
-other.
+is real, the 44 test years were resampled with replacement 2,000 times, which is called a
+bootstrap~\cite{efron1994}. For each resample, the RMSE difference between the two models was
+computed again, and the middle 95\% of the 2,000 differences gives a 95\% interval. Whole years
+were resampled together, because the errors within a year, and across overlapping multi-month
+forecasts, are strongly related to each other. Resampling whole blocks of neighboring
+observations instead of single values is known as a block bootstrap~\cite{kunsch1989}.
 
 To see which inputs the gradient boosting model actually uses, its permutation importance was
-measured. For this, the model was trained on 1950--2009 and scored on 2010--2023. One group of
+measured~\cite{breiman2001}. For this, the model was trained on 1950--2009 and scored on 2010--2023. One group of
 features $G$ was shuffled at a time, which destroys the information in that group while keeping
 its values realistic, and the increase in RMSE was recorded:
 \begin{equation}
@@ -786,12 +789,16 @@ water in the lake.}
 
 Between January 2013 and July 2020 the lake rose 1.88\,m. Compared with the 1950--2012 averages,
 the precipitation over the lake delivered about 80\,cm of extra water during this period and the
-runoff about 83\,cm (Figure~\ref{fig:case}, right). Evaporation worked in the opposite
-direction: it was above average and removed about 59\,cm more water than usual. So the rise was
-driven by a long wet period, not by lower evaporation. The net supply anomaly, about $+1.0$\,m,
-is smaller than the observed rise, and the rest cannot be explained with this dataset. Likely
-contributors are the normal seasonal rise from January to July (about 27\,cm on average), lower
-outflow while the lake was low, and the inflow from Lake Superior.
+runoff about 83\,cm (Figure~\ref{fig:case}, right). Evaporation was below average in 2014 and
+2015, which Gronewold et al.~\cite{gronewold2016} also found for 2014, but over the whole period
+it worked in the opposite direction: it was above average and removed about 59\,cm more water
+than usual. So the rise was driven by a long wet period, not by lower evaporation, which agrees
+with the high precipitation and river flows reported for these
+years~\cite{gronewold2016,gronewold2019}. The net supply anomaly, about $+1.0$\,m, is smaller
+than the observed rise, and the rest cannot be explained with this dataset. Likely contributors
+are the normal seasonal rise from January to July (about 27\,cm on average), lower outflow while
+the lake was low, and the inflow from Lake Superior, which was very high in
+2014~\cite{gronewold2016}.
 
 Both the water-balance model and gradient boosting followed the rise at a six-month lead with
 similar accuracy, with an RMSE of 15.0 and 14.6\,cm for target months in 2013--2020, against
@@ -863,6 +870,90 @@ surface temperature and ice cover (which control evaporation), and measured flow
 connecting rivers. Machine learning may well earn its place once those inputs are available, and
 this backtest gives the baseline to test it against.
 
+\begin{thebibliography}{99}
+\raggedright
+
+\bibitem{gronewold2016}
+A.~D. Gronewold, J.~Bruxer, D.~Durnford, et al. Hydrological drivers of record-setting water
+level rise on Earth's largest lake system. \emph{Water Resources Research}, 52(5):4026--4042,
+2016. \url{https://doi.org/10.1002/2015WR018209}
+
+\bibitem{gronewold2019}
+A.~D. Gronewold and R.~B. Rood. Recent water level changes across Earth's largest lake system
+and implications for future variability. \emph{Journal of Great Lakes Research}, 45(1):1--3,
+2019. \url{https://doi.org/10.1016/j.jglr.2018.10.012}
+
+\bibitem{epa}
+U.S.\ Environmental Protection Agency. Physical features of the Great Lakes.
+\url{https://www.epa.gov/greatlakes/physical-features-great-lakes} (accessed October 19, 2026).
+
+\bibitem{glerl}
+NOAA Great Lakes Environmental Research Laboratory. Great Lakes monthly hydrologic data
+(1860--2024). \url{https://www.glerl.noaa.gov/ahps/mnth-hydro.html}. Data files:
+\url{https://www.glerl.noaa.gov/pubs/tech_reports/glerl-083/UpdatedFiles/} (downloaded October
+12, 2026).
+
+\bibitem{hunter2015}
+T.~S. Hunter, A.~H. Clites, K.~B. Campbell and A.~D. Gronewold. Development and application of
+a North American Great Lakes hydrometeorological database, Part I: Precipitation, evaporation,
+runoff, and air temperature. \emph{Journal of Great Lakes Research}, 41(1):65--77, 2015.
+\url{https://doi.org/10.1016/j.jglr.2014.12.006}
+
+\bibitem{glos}
+GLISA, the NOAA Great Lakes CAP/RISA Team. Huron - Monthly - GLISA - General (dataset
+\texttt{glisa\_general\_monthly\_huron}). Great Lakes Observing System, Seagull ERDDAP server.
+\url{https://seagull-erddap.glos.org/erddap/info/glisa_general_monthly_huron/index.html}. Data
+file: \url{https://seagull-erddap.glos.org/erddap/tabledap/glisa_general_monthly_huron.csv}
+(downloaded October 12, 2026).
+
+\bibitem{fpp3}
+R.~J. Hyndman and G.~Athanasopoulos. \emph{Forecasting: Principles and Practice}, 3rd edition.
+OTexts, Melbourne, Australia, 2021. \url{https://otexts.com/fpp3/}
+
+\bibitem{friedman2001}
+J.~H. Friedman. Greedy function approximation: A gradient boosting machine. \emph{The Annals of
+Statistics}, 29(5):1189--1232, 2001. \url{https://doi.org/10.1214/aos/1013203451}
+
+\bibitem{cart}
+L.~Breiman, J.~H. Friedman, R.~A. Olshen and C.~J. Stone. \emph{Classification and Regression
+Trees}. Routledge, 2017. \url{https://doi.org/10.1201/9781315139470}
+
+\bibitem{sklearn}
+F.~Pedregosa, G.~Varoquaux, A.~Gramfort, et al. Scikit-learn: Machine learning in Python.
+\emph{Journal of Machine Learning Research}, 12:2825--2830, 2011.
+\url{https://jmlr.org/papers/v12/pedregosa11a.html}
+
+\bibitem{friedman2002}
+J.~H. Friedman. Stochastic gradient boosting. \emph{Computational Statistics \& Data Analysis},
+38(4):367--378, 2002. \url{https://doi.org/10.1016/S0167-9473(01)00065-2}
+
+\bibitem{efron1994}
+B.~Efron and R.~J. Tibshirani. \emph{An Introduction to the Bootstrap}. Chapman and Hall/CRC,
+1994. \url{https://doi.org/10.1201/9780429246593}
+
+\bibitem{kunsch1989}
+H.~R. K\"unsch. The jackknife and the bootstrap for general stationary observations. \emph{The
+Annals of Statistics}, 17(3):1217--1241, 1989. \url{https://doi.org/10.1214/aos/1176347265}
+
+\bibitem{breiman2001}
+L.~Breiman. Random forests. \emph{Machine Learning}, 45(1):5--32, 2001.
+\url{https://doi.org/10.1023/A:1010933404324}
+
+\bibitem{pandas}
+W.~McKinney. Data structures for statistical computing in Python. In \emph{Proceedings of the
+9th Python in Science Conference}, pages 56--61, 2010.
+\url{https://doi.org/10.25080/Majora-92bf1922-00a}
+
+\bibitem{numpy}
+C.~R. Harris, K.~J. Millman, S.~J. van der Walt, et al. Array programming with NumPy.
+\emph{Nature}, 585(7825):357--362, 2020. \url{https://doi.org/10.1038/s41586-020-2649-2}
+
+\bibitem{matplotlib}
+J.~D. Hunter. Matplotlib: A 2D graphics environment. \emph{Computing in Science \& Engineering},
+9(3):90--95, 2007. \url{https://doi.org/10.1109/MCSE.2007.55}
+
+\end{thebibliography}
+
 \clearpage
 \appendix
 
@@ -871,7 +962,9 @@ this backtest gives the baseline to test it against.
 The following code implements the core of the pipeline described in this paper. The full code is
 split across three notebooks: \texttt{function\_declaration.ipynb} defines every function and
 class, \texttt{data\_processing.ipynb} builds the monthly table from the raw files, and
-\texttt{main.ipynb} runs the backtest and makes the figures.
+\texttt{main.ipynb} runs the backtest and makes the figures. All of the code is written in Python,
+using pandas~\cite{pandas} and NumPy~\cite{numpy} for the data, scikit-learn~\cite{sklearn} for
+gradient boosting and Matplotlib~\cite{matplotlib} for the figures.
 
 \begin{lstlisting}[caption={Imports, data loading and the merged monthly table}]
 from pathlib import Path
