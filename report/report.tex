@@ -970,7 +970,7 @@ class WaterBalance:
                     np.array([target.month]), x_now[None], x_prev[None],
                     np.array([level_start + cum / 1000.0]),
                 )
-                cum += float(row @ self.coef_)
+                cum += float(row[0] @ self.coef_)
                 path[k] = cum
                 x_prev = x_now
             out[i] = [path[h] for h in horizons]
