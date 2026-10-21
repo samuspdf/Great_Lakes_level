@@ -10,5 +10,5 @@ We merge the 74-year public data from the National Oceanic and Atmospheric Admin
 data/raw/         nine raw NOAA/GLOS files (never modified)
 data/processed/   merged monthly table, forecasts and result tables
 notebooks/        the analysis
-figures/          the six report figures
+figures/          the seven report figures
 report/           report.tex, the full write-up

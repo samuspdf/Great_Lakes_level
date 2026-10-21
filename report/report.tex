@@ -66,7 +66,9 @@ the inputs did help: a snowpack model, driven by daily air temperature and preci
 land, improved the runoff forecast and brought the six-month error of the water-balance model
 down to 14.25\,cm, the best of all real forecasts at every horizon. When the
 water-balance model was given the precipitation, evaporation and runoff that actually happened,
-its error dropped to 2.39\,cm and 8.49\,cm. This result shows us that the limit on forecast
+its error dropped to 2.39\,cm and 8.49\,cm. Forecast ranges built from the weather of past years
+were informative but too narrow: the 80\% ranges held the observed level in only 60--73\% of the
+months. This result shows us that the limit on forecast
 skill is the unknown future weather, not the flexibility or the detail of the model. In the
 final section, we discuss the implications of these findings and suggest ways to improve the
 forecasts.
@@ -861,6 +863,27 @@ $s_h$ & Standard deviation of the target $y_{t,h}$ in the training years \\
 \end{tabular}
 \end{table}
 
+\subsection{Forecast Ranges}
+\label{sec:ranges}
+
+Every model above gives a single number, which hides how uncertain the forecast is. To give a
+range, the water-balance model was run many times from each origin, once for every past year $y$,
+with the weather anomalies of that year added to its AR(1) weather forecast:
+\begin{equation}
+X^{(y)}_{c,t+k} = \hat X_{c,t+k} + \left( X_{c,\,t+k-12(Y_t - y)} - \overline{X}_{c,m(t+k)}
+\right), \label{eq:trace}
+\end{equation}
+where $Y_t$ is the year of the origin, so that $t+k-12(Y_t - y)$ is the same calendar month in the
+past year $y$, or in the year after it when the forecast crosses into a new year. Adding the real
+anomalies of a whole year keeps the realistic pattern of the weather from one month to the next.
+This is the idea of ensemble streamflow prediction, in which a hydrologic model is driven by the
+weather of past years~\cite{day1985}. Only past years whose months end before the test year were
+used, which gives between 28 and 71 members for each forecast. The 2.5, 10, 50, 90 and 97.5\%
+points of the members give the median and the 80\% and 95\% ranges. A range is reliable if the
+observed level falls inside it as often as its name says, so the share of target months inside
+each range, its coverage, was recorded. The design was fixed on 1950--1979, before any test year
+was looked at.
+
 \subsection{Evaluation}
 
 The accuracy of each model is reported as the root-mean-square error (RMSE) of the forecast
@@ -911,6 +934,8 @@ improvement and 100\% means a perfect forecast. \\
 two models. If it includes zero, the two models cannot be told apart. \\
 Permutation importance & How much the RMSE increases when one group of features is shuffled. The
 larger the increase, the more the model depends on that group. \\
+Coverage & The share of target months whose observed level falls inside a forecast range. A
+reliable 80\% range holds about 80\% of them. \\
 \hline\hline
 \end{tabular}
 \end{table}
@@ -1255,6 +1280,52 @@ to close to the record high, where a curved outflow and a straight one differ th
 the likely reason. This is the one place where the extra physical detail showed an advantage,
 and it appears only when the weather is known.
 
+\subsection{How Reliable Are the Forecast Ranges?}
+\label{sec:rangesresult}
+
+Figure~\ref{fig:ranges} shows the six-month-ahead ranges of the water-balance model through the
+2013 low and the 2020 high, and Table~\ref{tab:coverage} shows how often the observed level fell
+inside the ranges over all 44 test years.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig7_forecast_ranges.png}
+\caption{Left: six-month-ahead median and 80\% and 95\% ranges of the water-balance model,
+2012--2021, built from the weather of past years. Right: share of the 528 target months whose
+observed level fell inside the 80\% and 95\% ranges, by horizon; the dashed lines mark the
+coverage a reliable range would have.}
+\label{fig:ranges}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{Coverage and width of the forecast ranges of the water-balance model, test years
+1980--2023.}
+\label{tab:coverage}
+\begin{tabular}{||c|c|c|c||}
+\hline\hline
+Horizon & Inside 80\% range & Inside 95\% range & Median width of 80\% range \\
+\hline\hline
+1 & 59.8\% & 76.1\% & 5.4\,cm \\
+2 & 69.1\% & 84.7\% & 12.9\,cm \\
+3 & 70.8\% & 86.0\% & 19.2\,cm \\
+4 & 70.6\% & 86.4\% & 24.3\,cm \\
+5 & 70.8\% & 87.5\% & 29.4\,cm \\
+6 & 72.7\% & 85.4\% & 33.3\,cm \\
+\hline\hline
+\end{tabular}
+\end{table}
+
+The ranges are informative: they widen from about 5\,cm at one month to 33\,cm at six months, in
+step with the growing error in Table~\ref{tab:rmse}. But they are too narrow. The 80\% ranges held
+the observed level in only 60--73\% of the target months and the 95\% ranges in 76--88\%, and the
+shortfall is largest at one month. This is expected from how they were built: they contain the
+uncertainty of the weather, but not the error of the model itself or the slow drift described in
+Section~\ref{sec:limitations}. At one month the weather has had little time to matter, so the
+error of the model dominates. In the steep climbs of 2014 and 2019 the observed level rose above
+even the 95\% range, which means that the rise was larger than the weather of any past year,
+added to the model, could produce.
+
 \section{Discussion}
 
 The results of this case study point to one main finding: the forecasts improved only when
@@ -1298,7 +1369,12 @@ far more than any change of model achieved. The lake model gains almost as much,
 to 8.83\,cm. Precipitation has almost no memory from one month to the next ($\phi_P = 0.02$), so
 no model that only looks at past data can know whether the coming months will be wet.
 
+The forecast ranges show the same limit from another side. Most of the forecast error comes from
+the unknown weather, so the weather of past years gives ranges of about the right size, but not
+all of it does, and the ranges are too narrow, most of all at one month.
+
 This study also has some limitations:
+\label{sec:limitations}
 \begin{enumerate}
 \item \textbf{Level Data End in 2023}: The level file runs to October 2025 but has no values after
 December 2023, so 2024 could not be tested.
@@ -1328,6 +1404,9 @@ the water-balance model here. It does not show that no machine learning approach
 \item \textbf{Simple Snowpack Model}: The snowpack is simulated, not measured. The model uses a
 fixed 0\,$^\circ$C threshold between rain and snow, one melt factor for both basins and one store
 for all of the land, and its gain only clearly exceeds the sampling uncertainty at six months.
+\item \textbf{Ranges Too Narrow}: The forecast ranges only include the uncertainty of the weather,
+so they hold the observed level less often than they should, and they were built for the
+water-balance model only.
 \item \textbf{Data Delay}: $P$, $E$ and $R$ for month $t$ are assumed to be known at the end of
 month $t$. In practice these estimates are published later, so the real-time skill would be
 somewhat lower.
@@ -1343,7 +1422,9 @@ hybrid of the two, not a 17-parameter lake model with a curved outflow, and not 
 corrects the weather driving that lake model. What did help was better physics in the inputs: a
 simulated snowpack on the land improved the runoff forecast and lowered the six-month error of
 the water-balance model from 14.66 to 14.25\,cm, which made it the best real forecast at every
-horizon. Most of the improvement over persistence came from the seasonal cycle. Knowing the recent supply added a further 22\% at one month and little beyond three
+horizon. Most of the improvement over persistence came from the seasonal cycle. Ranges built from
+the weather of past years gave each forecast a sensible width, but held the observed level less
+often than they should, because they leave out the error of the model itself. Knowing the recent supply added a further 22\% at one month and little beyond three
 months. The run with the observed weather showed that the error could be cut by more than 40\%
 at two to six months if the future precipitation, evaporation and runoff were known.
 
@@ -1448,6 +1529,10 @@ Networks: Tricks of the Trade}, Lecture Notes in Computer Science, pages 55--69.
 I.~Loshchilov and F.~Hutter. Decoupled weight decay regularization. arXiv:1711.05101, 2017.
 Published as a conference paper at the International Conference on Learning Representations
 (ICLR), 2019. \url{https://arxiv.org/abs/1711.05101}
+
+\bibitem{day1985}
+G.~N. Day. Extended streamflow forecasting using NWSRFS. \emph{Journal of Water Resources Planning
+and Management}, 111(2):157--170, 1985. \url{https://doi.org/10.1061/(ASCE)0733-9496(1985)111:2(157)}
 
 \bibitem{efron1994}
 B.~Efron and R.~J. Tibshirani. \emph{An Introduction to the Bootstrap}. Chapman and Hall/CRC,
@@ -1957,6 +2042,34 @@ def bootstrap_rmse_diff(preds, model_a, model_b, n_boot=2000, seed=0):
         lo, hi = np.percentile(boots, [2.5, 97.5])
         out[h] = {"diff_cm": diff(np.arange(len(years))), "ci_low": lo, "ci_high": hi}
     return pd.DataFrame(out).T.rename_axis("horizon")
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Forecast ranges}]
+class TraceWaterBalance(WaterBalance):
+    """Water balance whose future weather is the AR(1) forecast plus the weather anomalies of one past year."""
+    def _forcing(self, df, origins, k, observed):
+        x = super()._forcing(df, origins, k, observed)
+        past = origins + k - 12 * (origins.year - self.trace_year)  # the same months in the trace year
+        return x + df.loc[past, COMPONENTS].to_numpy() - self.clim_.loc[past.month].to_numpy()
+
+
+def ensemble_backtest(df, first_test_year=FIRST_TEST_YEAR, quantiles=(0.025, 0.1, 0.5, 0.9, 0.975)):
+    rows = []
+    for year in range(first_test_year, df.index.max().year + 1):
+        model = TraceWaterBalance().fit(df.loc[: f"{year - 1}-12"])
+        targets = df.loc[f"{year}-01":f"{year}-12"].index
+        for h in HORIZONS:
+            origins = targets - h
+            # every past year whose weather sequence for these months ends before the test year
+            traces = [y for y in range(df.index.min().year + 1, year) if (origins + h - 12 * (origins.year - y)).max().year < year]
+            members = []
+            for y in traces:
+                model.trace_year = y
+                members.append(model.predict(df, origins, [h])[:, 0])
+            level = df.loc[origins, "level_m"].to_numpy()[:, None] + np.quantile(np.array(members), quantiles, axis=0).T / 1000
+            rows.append(pd.DataFrame(level, columns=[f"q{q}" for q in quantiles]).assign(
+                target=targets, horizon=h, observed_m=df.loc[targets, "level_m"].to_numpy(), members=len(traces)))
+    return pd.concat(rows, ignore_index=True)
 \end{lstlisting}
 
 \begin{lstlisting}[caption={Permutation importance}]
