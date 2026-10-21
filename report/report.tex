@@ -688,7 +688,20 @@ the AR(1) weather forecast of Equation~\ref{eq:ar1}:
 \end{equation}
 where $\sigma_c$ is the standard deviation of the anomalies of supply term $c$ in the training
 years. The weights of the last layer start at zero, so before any training the network gives
-exactly the forecast of the lake model.
+exactly the forecast of the lake model. Figure~\ref{fig:cnn} shows the network and how it is
+coupled to the lake model.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig6_cnn_architecture.png}
+\caption{The physics-guided CNN, drawn from the layer shapes of a network trained on 1950--1979.
+The input holds seven standardized series over the last 24 months, and the black frame marks one
+position of a width-3 filter. Two convolution layers and one linear layer give 18 outputs, a
+correction to precipitation (P), evaporation (E) and runoff (R) for each of the next six months.
+The corrected weather drives the lake model, whose parameters are fixed, and the loss on the
+levels and the weather is passed back through the lake model to the network.}
+\label{fig:cnn}
+\end{figure}
 
 \textbf{Training Through the Physics.} The 17 numbers of the lake model were fitted first and then
 held fixed. Equations~\ref{eq:lake} and \ref{eq:euler} use only arithmetic, so the error of the
