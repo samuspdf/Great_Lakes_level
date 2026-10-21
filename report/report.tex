@@ -66,12 +66,11 @@ the inputs did help: a snowpack model, driven by daily air temperature and preci
 land, improved the runoff forecast and brought the six-month error of the water-balance model
 down to 14.25\,cm, the best of all real forecasts at every horizon. When the
 water-balance model was given the precipitation, evaporation and runoff that actually happened,
-its error dropped to 2.39\,cm and 8.49\,cm. Forecast ranges built from the weather of past years
-were informative but too narrow: the 80\% ranges held the observed level in only 60--73\% of the
-months. This result shows us that the limit on forecast
-skill is the unknown future weather, not the flexibility or the detail of the model. In the
-final section, we discuss the implications of these findings and suggest ways to improve the
-forecasts.
+its error dropped to 2.39\,cm and 8.49\,cm. This result shows us that the limit on forecast skill
+is the unknown future weather, not the flexibility or the detail of the model. Forecast ranges
+built from the weather of past years were informative but too narrow: the 80\% ranges held the
+observed level in only 60--73\% of the months. In the final section, we discuss the implications
+of these findings and suggest ways to improve the forecasts.
 \end{abstract}
 
 \section{Introduction}
@@ -101,8 +100,9 @@ forecasting pipeline and to answer one narrow question: when forecasting the mon
 one to six months ahead, does machine learning beat simple baselines, and does it beat a
 physics-based water-balance model? Three follow-up questions are also asked: does a more detailed
 physical model do better, does a neural network do better when it is made to respect the
-physics, and does it help to add the physics of the snowpack on the land? Building knowledge of the physical process into a neural network in this way has
-improved predictions of lake water temperature~\cite{read2019}. The comparison is meant to be
+physics, and does it help to add the physics of the snowpack on the land? Building knowledge of
+the physical process into a neural network has improved predictions of lake water
+temperature~\cite{read2019}. The comparison is meant to be
 honest, including the case where machine learning does not win.
 
 \section{Data}
