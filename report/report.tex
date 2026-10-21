@@ -113,6 +113,38 @@ Table~\ref{tab:models} summarizes, the forecast ranges and the evaluation.
 Section~\ref{sec:results} presents the results, starting with an example of what the forecasts
 look like, and Section~\ref{sec:discussion} discusses them and lists the limitations.
 Section~\ref{sec:conclusion} concludes, and Appendix~\ref{app:code} lists the code.
+Table~\ref{tab:terms} explains the main terms used throughout.
+
+\begin{table}[htbp]
+\centering
+\caption{Key terms used in this paper.}
+\label{tab:terms}
+\small
+\begin{tabular}{||l|>{\raggedright\arraybackslash}p{0.68\textwidth}||}
+\hline\hline
+Term & Meaning \\
+\hline\hline
+Origin & The month at whose end a forecast is made, using only data up to that month. \\
+Horizon & How many months ahead of the origin a forecast is, from 1 to 6. \\
+Net basin supply (NBS) & Precipitation on the lake minus evaporation from it plus runoff from the
+land, in mm of water over the lake. \\
+Water balance & The bookkeeping of the water entering and leaving the lake, which sets how its
+level changes. \\
+AR(1) forecast & The way the physical models fill in the unknown future weather: the average for
+the calendar month plus a fading share of how unusual the latest month was. \\
+Perfect forcing & Running a model with the weather that actually happened. It is not a real
+forecast, but an upper bound on what the model could do. \\
+Snowpack & Water stored as snow on the land in winter, which reaches the lake when it melts. \\
+Rolling-origin backtest & The test used here: every model is fitted again on all the years before
+a test year and then forecasts that year, for each of the 44 test years. \\
+RMSE & Root-mean-square error, the typical size of a forecast miss, in cm. \\
+Bootstrap interval & The range of plausible values of a difference between two models. If it
+includes zero, the two models cannot be told apart. \\
+Forecast range & A band around a forecast that should contain the observed level with a stated
+probability, such as 80\% or 95\%. \\
+\hline\hline
+\end{tabular}
+\end{table}
 
 \section{Data}
 \label{sec:data}
