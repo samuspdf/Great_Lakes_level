@@ -33,7 +33,7 @@ The water-balance model with a snowpack model for the runoff is the most accurat
 pip install -r requirements.txt
 ```
 
-Run `notebooks/data_processing.ipynb`, then `notebooks/main.ipynb` from top to bottom (about 8 minutes).
+Run `notebooks/data_processing.ipynb`, then `notebooks/main.ipynb` from top to bottom (about 11 minutes).
 
 
 # Project layout
@@ -42,6 +42,6 @@ Run `notebooks/data_processing.ipynb`, then `notebooks/main.ipynb` from top to b
 data/raw/         nine raw NOAA/GLOS files (never modified)
 data/processed/   merged monthly table, forecasts and result tables
 notebooks/        the analysis
-figures/          the ten report figures
+figures/          the eleven report figures
 report/           report.tex and report.pdf, the full write-up
 ```

@@ -107,7 +107,15 @@ the physical process into a neural network has improved predictions of lake wate
 temperature~\cite{read2019}. The comparison is meant to be
 honest, including the case where machine learning does not win.
 
+The rest of the paper is organized as follows. Section~\ref{sec:data} describes the data and how
+it was prepared and checked. Section~\ref{sec:methods} describes the models, which
+Table~\ref{tab:models} summarizes, the forecast ranges and the evaluation.
+Section~\ref{sec:results} presents the results, starting with an example of what the forecasts
+look like, and Section~\ref{sec:discussion} discusses them and lists the limitations.
+Section~\ref{sec:conclusion} concludes, and Appendix~\ref{app:code} lists the code.
+
 \section{Data}
+\label{sec:data}
 
 \subsection{Source}
 
@@ -389,6 +397,7 @@ from origins one to six months earlier.}
 \end{figure}
 
 \section{Methodology}
+\label{sec:methods}
 
 Table~\ref{tab:models} lists all the models compared in this study. They differ in how much of the
 physics of the lake they use, and in how they fill in the weather of the coming months, which no
@@ -1015,8 +1024,27 @@ reliable 80\% range holds about 80\% of them. \\
 \end{table}
 
 \section{Results}
+\label{sec:results}
 
 \subsection{Accuracy by Horizon}
+
+Figure~\ref{fig:example} first shows what the forecasts look like for one origin, the end of
+March 2023, the last spring in the record. Every model starts from the level observed in March,
+176.43\,m, and forecasts the next six months. The lake rose with the spring supply to
+176.70\,m in July and August. Every model except persistence forecast this seasonal rise, the
+observed level stayed inside the 80\% range of the water-balance model at every horizon, and the
+water balance with the snowpack was within 1.6\,cm of the observed level from three to six months
+ahead. One origin says little about accuracy, which is why the rest of this section looks at all
+528 forecasts per horizon.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig11_example_forecast.png}
+\caption{One set of forecasts, made at the end of March 2023 for April to September 2023: the
+observed level (black), five of the models, and the 80\% and 95\% ranges of the water-balance
+model (Section~\ref{sec:ranges}). The dotted line marks the origin.}
+\label{fig:example}
+\end{figure}
 
 Table~\ref{tab:rmse} and Figure~\ref{fig:rmse} show the RMSE of every model at every horizon.
 
@@ -1428,6 +1456,7 @@ of 2019, the steepest climbs of the record, and fell below it in five months of 
 before the record low.
 
 \section{Discussion}
+\label{sec:discussion}
 
 The results of this case study point to one main finding: the forecasts improved only when
 better physical information was added to the inputs. More flexibility (gradient boosting, the
@@ -1518,6 +1547,7 @@ somewhat lower.
 \end{enumerate}
 
 \section{Conclusion}
+\label{sec:conclusion}
 
 This case study built a complete forecasting pipeline for the monthly level of Lake
 Michigan--Huron and compared machine learning models with models built on the physics of the
@@ -1670,6 +1700,7 @@ J.~D. Hunter. Matplotlib: A 2D graphics environment. \emph{Computing in Science 
 \appendix
 
 \section{Code Listing}
+\label{app:code}
 
 The following code implements the core of the pipeline described in this paper. The full code is
 split across three notebooks: \texttt{function\_declaration.ipynb} defines every function and
