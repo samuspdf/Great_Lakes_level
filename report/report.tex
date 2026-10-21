@@ -68,8 +68,9 @@ down to 14.25\,cm, the best of all real forecasts at every horizon. When the
 water-balance model was given the precipitation, evaporation and runoff that actually happened,
 its error dropped to 2.39\,cm and 8.49\,cm. This result shows us that the limit on forecast skill
 is the unknown future weather, not the flexibility or the detail of the model. Forecast ranges
-built from the weather of past years were informative but too narrow: the 80\% ranges held the
-observed level in only 60--73\% of the months. In the final section, we discuss the implications
+built from the weather of past years were too narrow on their own, but once the errors of the
+model itself were added, the 80\% and 95\% ranges held the observed level in 78--81\% and 95\% of
+the months. In the final section, we discuss the implications
 of these findings and suggest ways to improve the forecasts.
 \end{abstract}
 
@@ -881,8 +882,21 @@ weather of past years~\cite{day1985}. Only past years whose months end before th
 used, which gives between 28 and 71 members for each forecast. The 2.5, 10, 50, 90 and 97.5\%
 points of the members give the median and the 80\% and 95\% ranges. A range is reliable if the
 observed level falls inside it as often as its name says, so the share of target months inside
-each range, its coverage, was recorded. The design was fixed on 1950--1979, before any test year
-was looked at.
+each range, its coverage, was recorded.
+
+The weather is not the only source of error, so in the final ranges the errors that the
+water-balance model made on the training years even with the observed weather were added to
+every member as well:
+\begin{equation}
+\hat y^{\,(y,j)}_{t,h} = \hat y^{\,(y)}_{t,h} + e_{j,h}, \qquad
+e_{j,h} = y_{j,h} - \hat y^{\,\mathrm{perfect}}_{j,h}, \label{eq:modelerror}
+\end{equation}
+where $\hat y^{\,(y)}_{t,h}$ is the forecast with the weather of year $y$, $j$ runs over the
+training origins, and $\hat y^{\,\mathrm{perfect}}_{j,h}$ is the perfect-forcing forecast. Every
+member was combined with every one of these errors. The ranges from the weather alone were kept
+for comparison. The design, including the choice to add the model errors, was fixed on
+1950--1979 before any test year was looked at: on the 1970s, the ranges from the weather alone
+were too narrow, and adding the model errors brought them close to the coverage they aim for.
 
 \subsection{Evaluation}
 
@@ -1200,7 +1214,23 @@ Scale of the Huron basin & $\alpha_{\mathrm{Hur}}$ & 0.45 \\
 The store releases about a third of its water each month, so water that reaches it stays for
 about $1/\kappa \approx 3$ months on average before it flows into the lake. Snow that melts in
 April therefore keeps raising the runoff into early summer. Both basins contribute, with similar
-scales. The gain in Table~\ref{tab:boot2} grows with the horizon for the same reason:
+scales.
+
+Figure~\ref{fig:snow} shows the snowpack that the model simulates. On average it peaks at the end
+of February, melts during March and is gone by April, the month in which the runoff peaks. From
+year to year, a larger snowpack at the end of March goes with more runoff from April to June
+($r = 0.31$). The link is modest, because the spring rain matters as well, but it is information
+that the AR(1) forecast cannot use.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig8_snowpack.png}
+\caption{Left: average simulated snowpack on the land at the end of each month and average runoff
+into the lake, 1950--2023, both in mm of water over the lake. Right: simulated snowpack at the end
+of March against the runoff of the following April to June, one point per year, with a
+least-squares line.}
+\label{fig:snow}
+\end{figure} The gain in Table~\ref{tab:boot2} grows with the horizon for the same reason:
 the snowpack matters most for the total runoff of the next several months, not for the next
 month alone.
 
@@ -1291,40 +1321,44 @@ inside the ranges over all 44 test years.
 \centering
 \includegraphics[width=\textwidth]{fig7_forecast_ranges.png}
 \caption{Left: six-month-ahead median and 80\% and 95\% ranges of the water-balance model,
-2012--2021, built from the weather of past years. Right: share of the 528 target months whose
-observed level fell inside the 80\% and 95\% ranges, by horizon; the dashed lines mark the
-coverage a reliable range would have.}
+2012--2021, built from the weather of past years and the errors of the model itself. Right: share
+of the 528 target months whose observed level fell inside these 80\% and 95\% ranges, by horizon;
+the dashed lines mark the coverage a reliable range would have.}
 \label{fig:ranges}
 \end{figure}
 
 \begin{table}[htbp]
 \centering
-\caption{Coverage and width of the forecast ranges of the water-balance model, test years
-1980--2023.}
+\caption{Coverage of the forecast ranges of the water-balance model, test years 1980--2023, built
+from the weather alone and with the errors of the model added, and the median width of the final
+80\% range.}
 \label{tab:coverage}
-\begin{tabular}{||c|c|c|c||}
+\small
+\begin{tabular}{||c|c|c|c|c|c||}
 \hline\hline
-Horizon & Inside 80\% range & Inside 95\% range & Median width of 80\% range \\
+& \multicolumn{2}{c|}{Weather only} & \multicolumn{3}{c||}{Weather and model errors} \\
+Horizon & Inside 80\% & Inside 95\% & Inside 80\% & Inside 95\% & Width of 80\% range \\
 \hline\hline
-1 & 59.8\% & 76.1\% & 5.4\,cm \\
-2 & 69.1\% & 84.7\% & 12.9\,cm \\
-3 & 70.8\% & 86.0\% & 19.2\,cm \\
-4 & 70.6\% & 86.4\% & 24.3\,cm \\
-5 & 70.8\% & 87.5\% & 29.4\,cm \\
-6 & 72.7\% & 85.4\% & 33.3\,cm \\
+1 & 59.8\% & 76.1\% & 77.7\% & 94.9\% & 8.1\,cm \\
+2 & 69.1\% & 84.7\% & 78.8\% & 95.1\% & 16.3\,cm \\
+3 & 70.8\% & 86.0\% & 80.9\% & 95.1\% & 23.2\,cm \\
+4 & 70.6\% & 86.4\% & 80.3\% & 94.9\% & 29.1\,cm \\
+5 & 70.8\% & 87.5\% & 79.7\% & 95.3\% & 34.5\,cm \\
+6 & 72.7\% & 85.4\% & 78.6\% & 95.1\% & 39.1\,cm \\
 \hline\hline
 \end{tabular}
 \end{table}
 
-The ranges are informative: they widen from about 5\,cm at one month to 33\,cm at six months, in
-step with the growing error in Table~\ref{tab:rmse}. But they are too narrow. The 80\% ranges held
-the observed level in only 60--73\% of the target months and the 95\% ranges in 76--88\%, and the
-shortfall is largest at one month. This is expected from how they were built: they contain the
-uncertainty of the weather, but not the error of the model itself or the slow drift described in
-Section~\ref{sec:limitations}. At one month the weather has had little time to matter, so the
-error of the model dominates. In the steep climbs of 2014 and 2019 the observed level rose above
-even the 95\% range, which means that the rise was larger than the weather of any past year,
-added to the model, could produce.
+Built from the weather alone, the ranges are too narrow. Their 80\% ranges held the observed level
+in only 60--73\% of the target months and their 95\% ranges in 76--88\%, and the shortfall is
+largest at one month, when the weather has had little time to matter and the error of the model
+itself dominates. Adding the errors that the model made on the training years fixes this. The 80\%
+ranges then held the observed level in 78--81\% of the months and the 95\% ranges in 95\%, at
+every horizon, while their width grows from about 8\,cm at one month to 39\,cm at six months, in
+step with the growing error in Table~\ref{tab:rmse}. The ranges still miss in the most unusual
+years. At six months the observed level rose above the 95\% range in three months of 2014 and one
+of 2019, the steepest climbs of the record, and fell below it in five months of 2012, the year
+before the record low.
 
 \section{Discussion}
 
@@ -1370,8 +1404,10 @@ to 8.83\,cm. Precipitation has almost no memory from one month to the next ($\ph
 no model that only looks at past data can know whether the coming months will be wet.
 
 The forecast ranges show the same limit from another side. Most of the forecast error comes from
-the unknown weather, so the weather of past years gives ranges of about the right size, but not
-all of it does, and the ranges are too narrow, most of all at one month.
+the unknown weather, but not all of it: ranges built from the weather of past years alone are too
+narrow, most of all at one month. Once the errors of the model itself are added, the ranges hold
+the observed level about as often as they should, which makes them a useful way to report how
+uncertain each forecast is.
 
 This study also has some limitations:
 \label{sec:limitations}
@@ -1404,9 +1440,9 @@ the water-balance model here. It does not show that no machine learning approach
 \item \textbf{Simple Snowpack Model}: The snowpack is simulated, not measured. The model uses a
 fixed 0\,$^\circ$C threshold between rain and snow, one melt factor for both basins and one store
 for all of the land, and its gain only clearly exceeds the sampling uncertainty at six months.
-\item \textbf{Ranges Too Narrow}: The forecast ranges only include the uncertainty of the weather,
-so they hold the observed level less often than they should, and they were built for the
-water-balance model only.
+\item \textbf{Forecast Ranges}: The ranges were built for the water-balance model only, and their
+model-error part assumes that the errors of the training years carry over unchanged. They still
+miss in the most unusual years, such as 2012 and 2014.
 \item \textbf{Data Delay}: $P$, $E$ and $R$ for month $t$ are assumed to be known at the end of
 month $t$. In practice these estimates are published later, so the real-time skill would be
 somewhat lower.
@@ -1423,8 +1459,8 @@ corrects the weather driving that lake model. What did help was better physics i
 simulated snowpack on the land improved the runoff forecast and lowered the six-month error of
 the water-balance model from 14.66 to 14.25\,cm, which made it the best real forecast at every
 horizon. Most of the improvement over persistence came from the seasonal cycle. Ranges built from
-the weather of past years gave each forecast a sensible width, but held the observed level less
-often than they should, because they leave out the error of the model itself. Knowing the recent supply added a further 22\% at one month and little beyond three
+the weather of past years and the errors of the model itself held the observed level about as
+often as they should, so every forecast can come with an honest measure of its uncertainty. Knowing the recent supply added a further 22\% at one month and little beyond three
 months. The run with the observed weather showed that the error could be cut by more than 40\%
 at two to six months if the future precipitation, evaporation and runoff were known.
 
@@ -1818,15 +1854,19 @@ class SnowRunoff:
         s = np.maximum(s + (rain + melt) @ p[3:] - p[2] * pdd.mean(axis=-1), 0)
         return swe - melt, (1 - p[1]) * s, p[1] * s
 
-    def _run(self, p, df, origins, n_months, observed, normal_snow=False):
-        swe, s = np.zeros(2), 0.0
-        snowpack = []
+    def snowpack(self, df, p=None):  # simulated snowpack of both basins at the end of every month (mm over the land)
+        p, swe, s, out = self.p_ if p is None else p, np.zeros(2), 0.0, []
         for snow, rain, pdd in df[LAND].to_numpy().reshape(-1, 2, 3).transpose(0, 2, 1):
             swe, s, _ = self._step(p, swe, s, snow, rain, pdd)
-            snowpack.append(swe)
-        swe = np.array(snowpack)[df.index.get_indexer(origins)]
+            out.append(swe)
+        return pd.DataFrame(out, index=df.index, columns=["mic", "hur"])
+
+    def _run(self, p, df, origins, n_months, observed, normal_snow=False):
+        pack = self.snowpack(df, p)
+        swe = pack.loc[origins].to_numpy()
         if normal_snow:  # the average snowpack of the origin's calendar month instead of this year's
-            swe = pd.DataFrame(np.array(snowpack), index=df.index).loc[: self.end_].groupby(month_of(df.index[df.index <= self.end_])).mean().loc[origins.month].to_numpy()
+            past = pack.loc[: self.end_]
+            swe = past.groupby(month_of(past.index)).mean().loc[origins.month].to_numpy()
         s, out = df.loc[origins, "runoff_mm"].to_numpy() * (1 - p[1]) / p[1], []  # storage implied by this month's runoff
         for k in range(1, n_months + 1):
             land = (df.loc[origins + k, LAND] if observed else self.clim_.loc[(origins + k).month]).to_numpy()
@@ -2053,10 +2093,11 @@ class TraceWaterBalance(WaterBalance):
         return x + df.loc[past, COMPONENTS].to_numpy() - self.clim_.loc[past.month].to_numpy()
 
 
-def ensemble_backtest(df, first_test_year=FIRST_TEST_YEAR, quantiles=(0.025, 0.1, 0.5, 0.9, 0.975)):
+def ensemble_backtest(df, first_test_year=FIRST_TEST_YEAR, quantiles=(0.025, 0.1, 0.5, 0.9, 0.975), model_error=False):
     rows = []
     for year in range(first_test_year, df.index.max().year + 1):
-        model = TraceWaterBalance().fit(df.loc[: f"{year - 1}-12"])
+        train = df.loc[: f"{year - 1}-12"]
+        model, perfect = TraceWaterBalance().fit(train), WaterBalance(perfect_forcing=True).fit(train)
         targets = df.loc[f"{year}-01":f"{year}-12"].index
         for h in HORIZONS:
             origins = targets - h
@@ -2066,7 +2107,12 @@ def ensemble_backtest(df, first_test_year=FIRST_TEST_YEAR, quantiles=(0.025, 0.1
             for y in traces:
                 model.trace_year = y
                 members.append(model.predict(df, origins, [h])[:, 0])
-            level = df.loc[origins, "level_m"].to_numpy()[:, None] + np.quantile(np.array(members), quantiles, axis=0).T / 1000
+            members = np.array(members)
+            if model_error:  # add the errors the model makes on the training years even when the weather is known
+                o = train.index[:-h]
+                err = _future_change(train, h).loc[o].to_numpy() - perfect.predict(train, o, [h])[:, 0]
+                members = (members[:, None, :] + err[None, :, None]).reshape(-1, len(origins))
+            level = df.loc[origins, "level_m"].to_numpy()[:, None] + np.quantile(members, quantiles, axis=0).T / 1000
             rows.append(pd.DataFrame(level, columns=[f"q{q}" for q in quantiles]).assign(
                 target=targets, horizon=h, observed_m=df.loc[targets, "level_m"].to_numpy(), members=len(traces)))
     return pd.concat(rows, ignore_index=True)

@@ -41,6 +41,6 @@ Run `notebooks/data_processing.ipynb`, then `notebooks/main.ipynb` from top to b
 data/raw/         nine raw NOAA/GLOS files (never modified)
 data/processed/   merged monthly table, forecasts and result tables
 notebooks/        the analysis
-figures/          the seven report figures
+figures/          the eight report figures
 report/           report.tex and report.pdf, the full write-up
 ```
