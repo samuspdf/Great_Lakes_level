@@ -61,7 +61,10 @@ month and 14.66\,cm at six months. Gradient boosting was slightly worse at every
 (3.32\,cm and 15.39\,cm), but the differences were within the sampling uncertainty, and the
 hybrid was no better than the water-balance model alone. The more detailed lake model was also
 slightly worse (3.26\,cm and 14.78\,cm), and the CNN, which corrects the weather forecast that
-drives the lake model, stayed almost identical to it (3.26\,cm and 14.76\,cm). When the
+drives the lake model, stayed almost identical to it (3.26\,cm and 14.76\,cm). Adding physics to
+the inputs did help: a snowpack model, driven by daily air temperature and precipitation over the
+land, improved the runoff forecast and brought the six-month error of the water-balance model
+down to 14.25\,cm, the best of all real forecasts at every horizon. When the
 water-balance model was given the precipitation, evaporation and runoff that actually happened,
 its error dropped to 2.39\,cm and 8.49\,cm. This result shows us that the limit on forecast
 skill is the unknown future weather, not the flexibility or the detail of the model. In the
@@ -94,9 +97,9 @@ Straits of Mackinac and stand at the same elevation, so hydraulically they behav
 with a surface area of about 117,400\,km$^2$~\cite{epa}. The goal of this case study is to build a complete
 forecasting pipeline and to answer one narrow question: when forecasting the monthly mean level
 one to six months ahead, does machine learning beat simple baselines, and does it beat a
-physics-based water-balance model? Two follow-up questions are also asked: does a more detailed
-physical model do better, and does a neural network do better when it is made to respect the
-physics? Building knowledge of the physical process into a neural network in this way has
+physics-based water-balance model? Three follow-up questions are also asked: does a more detailed
+physical model do better, does a neural network do better when it is made to respect the
+physics, and does it help to add the physics of the snowpack on the land? Building knowledge of the physical process into a neural network in this way has
 improved predictions of lake water temperature~\cite{read2019}. The comparison is meant to be
 honest, including the case where machine learning does not win.
 
@@ -110,13 +113,14 @@ Monthly Hydrologic Data of the NOAA Great Lakes Environmental Research Laborator
 (GLERL)~\cite{glerl}, a database described by Hunter et al.~\cite{hunter2015}. The monthly
 lake-wide mean water level was retrieved from the Seagull ERDDAP server of GLOS~\cite{glos}.
 Levels are given in meters above the International Great Lakes Datum of 1985 (IGLD 1985), the
-reference height used for all Great Lakes levels. In total, seven raw files were used
-(Table~\ref{tab:data}), all of them downloaded on October 12, 2026. The raw files were never
-modified; every change to the data was done in code.
+reference height used for all Great Lakes levels. The daily air temperature and precipitation
+over the land of each basin come from the same GLERL database. In total, nine raw files were used
+(Table~\ref{tab:data}). Seven were downloaded on October 12, 2026, and the two daily files on
+October 20, 2026. The raw files were never modified; every change to the data was done in code.
 
 \begin{table}[htbp]
 \centering
-\caption{The seven raw files used in this study.}
+\caption{The nine raw files used in this study.}
 \label{tab:data}
 \begin{tabular}{||l|c|c|c|c||}
 \hline\hline
@@ -125,6 +129,7 @@ Variable & Source & Files & Units & Period with data \\
 Over-lake precipitation & NOAA GLERL & Michigan, Huron & mm per month & Jan 1940 -- Dec 2024 \\
 Over-lake evaporation & NOAA GLERL & Michigan, Huron & mm per month & Jan 1940 -- Dec 2024 \\
 Basin runoff & NOAA GLERL & Michigan, Huron & m$^3$/s & 1901 -- Aug 2024 \\
+Over-land weather & NOAA GLERL & Michigan, Huron & $^\circ$C, mm/day & Jan 1940 -- Dec 2024 \\
 Lake level & GLOS & Michigan--Huron & m (IGLD 1985) & Jan 1918 -- Dec 2023 \\
 \hline\hline
 \end{tabular}
@@ -208,6 +213,16 @@ Subtracting the two gives
 This small fact is important to us because it shows that the change between two monthly means
 depends equally on the supply of this month and of the month before. It is the reason the
 water-balance model in Section~\ref{sec:wb} uses two months of every supply term.
+
+\item \textbf{Over-Land Weather}: The two daily files give the air temperature and precipitation
+over the land of each basin $b$ (Michigan or Huron). The mean temperature $T$ of a day was taken as
+the average of its minimum and maximum. Precipitation on days with $T < 0\,^\circ$C was counted as
+snowfall, $P^{\mathrm{snow}}_{b,t}$, and the rest as rainfall, $P^{\mathrm{rain}}_{b,t}$. The
+warmth of each month was measured by its positive degree-days,
+\begin{equation}
+D_{b,t} = \sum_{\text{days in month } t} \max(T, 0). \label{eq:pdd}
+\end{equation}
+These monthly totals feed the snowpack model of Section~\ref{sec:snow}.
 \end{itemize}
 
 Rows before 1950 and after the last month with every series present were then dropped. The
@@ -235,6 +250,9 @@ $N_t$ & Number of days in month $t$ \\
 $\mathrm{NBS}_t$ & Net basin supply, $P_t - E_t + R_t$ (mm) \\
 $s_t$ & Rate at which the level rises during month $t$ \\
 $\ell$ & Level at the boundary between months $t-1$ and $t$ \\
+$b$ & Basin, Michigan or Huron \\
+$P^{\mathrm{snow}}_{b,t},\ P^{\mathrm{rain}}_{b,t}$ & Snowfall and rainfall over the land of basin $b$ (mm) \\
+$D_{b,t}$ & Positive degree-days over the land of basin $b$ ($^\circ$C $\times$ days) \\
 \hline\hline
 \end{tabular}
 \end{table}
@@ -580,6 +598,76 @@ $\theta$ & All 17 numbers of the lake model \\
 \end{tabular}
 \end{table}
 
+\subsection{Snowpack Model}
+\label{sec:snow}
+
+The water-balance and lake models fill in the future runoff with the AR(1) forecast of
+Equation~\ref{eq:ar1}, which only knows the recent runoff. But snow that falls on the land in
+winter does not reach the lake until it melts, so a large snowpack at the end of winter means
+extra runoff in the months that follow. The snowpack model adds this physics for the two basins.
+In each basin, snowfall builds a snowpack $W_{b,t}$ (mm of water over the land), which melts in
+proportion to the positive degree-days, the standard temperature-index method~\cite{hock2003}:
+\begin{equation}
+M_{b,t} = \min\left(W_{b,t-1} + P^{\mathrm{snow}}_{b,t},\ f\,D_{b,t}\right), \qquad
+W_{b,t} = W_{b,t-1} + P^{\mathrm{snow}}_{b,t} - M_{b,t}, \label{eq:snow}
+\end{equation}
+where $M_{b,t}$ is the melt and $f$ is the melt per degree-day. Rain and meltwater then fill one
+store of water in the land of both basins, $B_t$. Evapotranspiration removes water from it in
+proportion to the warmth, and the rivers release a share $\kappa$ of it every month:
+\begin{equation}
+B'_t = \max\Big(B_{t-1} + \sum_{b} \alpha_b \left(P^{\mathrm{rain}}_{b,t} + M_{b,t}\right)
+- \eta\,\bar D_t,\ 0\Big), \qquad R^{\mathrm{snow}}_t = \kappa\,B'_t, \qquad
+B_t = (1 - \kappa)\,B'_t, \label{eq:store}
+\end{equation}
+where $\alpha_b$ turns mm over the land of basin $b$ into mm over the lake, $\eta$ is the
+evapotranspiration per degree-day and $\bar D_t$ is the average degree-days of the two basins.
+
+\textbf{Forecasting.} At origin $t$, the snowpack comes from running Equation~\ref{eq:snow}
+through the record up to month $t$, and the store comes from the runoff observed in that month,
+$B_t = R_t\,(1 - \kappa)/\kappa$. The model is then stepped forward with the calendar-month
+averages of $P^{\mathrm{snow}}$, $P^{\mathrm{rain}}$ and $D$ in the training years, which gives
+$\hat R^{\mathrm{snow}}_{t+k}$. Only the effect of an unusual snowpack is used. The same run is
+repeated from the average snowpack of calendar month $m(t)$, which gives
+$\hat R^{\mathrm{avg}}_{t+k}$, and the difference is added to the AR(1) runoff forecast:
+\begin{equation}
+\hat X^{\mathrm{snow}}_{R,t+k} = \hat X_{R,t+k} + \hat R^{\mathrm{snow}}_{t+k}
+- \hat R^{\mathrm{avg}}_{t+k}. \label{eq:snowforecast}
+\end{equation}
+
+\textbf{Fitting.} The five numbers $f$, $\kappa$, $\eta$, $\alpha_{\mathrm{Mic}}$ and
+$\alpha_{\mathrm{Hur}}$ were fitted by least squares to the observed runoff one to six months
+after every training origin, with the observed weather as input, in the same way as
+Equation~\ref{eq:lakefit}. Two earlier versions were tried on 1950--1979 only: one that replaced
+the AR(1) runoff forecast entirely, and one without evapotranspiration. Both forecast the runoff
+worse than AR(1) in those years and were dropped before any test year was used. The version above
+improved the level forecasts of both physical models on the 1970s. The water-balance and lake
+models that use Equation~\ref{eq:snowforecast} for their runoff are called \emph{water balance +
+snowpack} and \emph{lake model + snowpack}; nothing else in them changes.
+Table~\ref{tab:notation-snow} summarizes the notation used in
+Equations~\ref{eq:snow}--\ref{eq:snowforecast}.
+
+\begin{table}[htbp]
+\centering
+\caption{Notation used in the snowpack model.}
+\label{tab:notation-snow}
+\begin{tabular}{||c|l||}
+\hline\hline
+Symbol & Meaning \\
+\hline\hline
+$W_{b,t}$ & Snowpack over the land of basin $b$ at the end of month $t$ (mm of water) \\
+$M_{b,t}$ & Snowmelt in basin $b$ in month $t$ (mm) \\
+$f$ & Melt per positive degree-day (mm per $^\circ$C per day) \\
+$B_t,\ B'_t$ & Water stored in the land, after and before the month's runoff (mm over the lake) \\
+$\alpha_b$ & Share of the rain and meltwater of basin $b$ that reaches the store \\
+$\eta$ & Evapotranspiration per degree-day (mm over the lake) \\
+$\kappa$ & Share of the store released as runoff each month \\
+$\bar D_t$ & Average positive degree-days of the two basins \\
+$\hat R^{\mathrm{snow}}_{t+k},\ \hat R^{\mathrm{avg}}_{t+k}$ & Model runoff from this year's and from the average snowpack \\
+$\hat X^{\mathrm{snow}}_{R,t+k}$ & Runoff forecast used by the snowpack variants \\
+\hline\hline
+\end{tabular}
+\end{table}
+
 \subsection{Gradient Boosting}
 
 The machine learning model of choice here was gradient boosting~\cite{friedman2001} with
@@ -836,8 +924,8 @@ Table~\ref{tab:rmse} and Figure~\ref{fig:rmse} show the RMSE of every model at e
 \begin{table}[htbp]
 \centering
 \caption{RMSE of the forecast level (cm) by horizon $h$ in months, test years 1980--2023. Bold
-marks the best real forecast at each horizon. The last two rows use the observed future weather
-and are not real forecasts.}
+marks the best real forecast at each horizon (both are bold where two round to the same value).
+The last two rows use the observed future weather and are not real forecasts.}
 \label{tab:rmse}
 \begin{tabular}{||l|c|c|c|c|c|c||}
 \hline\hline
@@ -845,11 +933,13 @@ Model & $h=1$ & $h=2$ & $h=3$ & $h=4$ & $h=5$ & $h=6$ \\
 \hline\hline
 Persistence & 6.73 & 12.37 & 17.06 & 20.73 & 23.30 & 24.81 \\
 Seasonal climatology & 4.14 & 7.06 & 9.48 & 11.63 & 13.53 & 15.27 \\
-Water balance & \textbf{3.22} & \textbf{6.33} & \textbf{8.82} & \textbf{11.03} & \textbf{12.96}
-& 14.66 \\
+Water balance & \textbf{3.22} & 6.33 & 8.82 & 11.03 & 12.96 & 14.66 \\
+Water balance + snowpack & \textbf{3.22} & \textbf{6.26} & \textbf{8.67} & \textbf{10.79}
+& \textbf{12.66} & \textbf{14.25} \\
 Lake model & 3.26 & 6.38 & 8.88 & 11.12 & 13.08 & 14.78 \\
+Lake model + snowpack & 3.25 & 6.30 & 8.73 & 10.89 & 12.79 & 14.40 \\
 Gradient boosting & 3.32 & 6.51 & 9.12 & 11.40 & 13.48 & 15.39 \\
-Hybrid (water balance + boosting) & 3.26 & 6.35 & 8.95 & 11.18 & 13.00 & \textbf{14.58} \\
+Hybrid (water balance + boosting) & 3.26 & 6.35 & 8.95 & 11.18 & 13.00 & 14.58 \\
 Physics-guided CNN & 3.26 & 6.37 & 8.87 & 11.10 & 13.05 & 14.76 \\
 \hline\hline
 Water balance, perfect forcing & 2.39 & 3.77 & 5.08 & 6.29 & 7.43 & 8.49 \\
@@ -885,6 +975,11 @@ changed the RMSE by only $-0.08$ to $+0.15$\,cm.
 water-balance model at every horizon, by 0.05\,cm at one month and 0.12\,cm at six months.
 \item \textbf{The CNN Stayed Close to the Lake Model}: Its RMSE was slightly lower than that of
 the lake model at every horizon, but by at most 0.03\,cm (Section~\ref{sec:cnnresult}).
+\item \textbf{The Snowpack Helped}: Adding the snowpack to the runoff forecast lowered the RMSE of
+the water-balance model at every horizon, by 0.08\,cm at two months and 0.41\,cm at six months,
+from 14.66 to 14.25\,cm. This made it the best real forecast at every horizon, and its reduction
+over the seasonal climatology at four to six months rose from 4--5\% to 6--7\%. The lake model
+gained almost as much, from 14.78 to 14.40\,cm at six months.
 \item \textbf{The Weather Sets the Limit}: With the observed future weather, the same
 water-balance model reached 2.39\,cm at one month and 8.49\,cm at six months. That is 26\% lower
 than the real water-balance forecast at one month and 40--43\% lower at two to six months. The
@@ -934,19 +1029,27 @@ Gradient boosting is clearly better than the seasonal climatology only at one an
 
 \begin{table}[htbp]
 \centering
-\caption{Difference in RMSE (cm) for the two new models, with the 95\% bootstrap interval in
-brackets. WB is the water-balance model. A negative value means the first model is better.}
+\caption{Difference in RMSE (cm) for the new models, with the 95\% bootstrap interval in
+brackets. WB is the water-balance model, Lake the lake model and Snow the snowpack version of
+each. A negative value means the first model is better.}
 \label{tab:boot2}
-\begin{tabular}{||c|c|c||}
+\small
+\begin{tabular}{||c|c|c|c|c||}
 \hline\hline
-Horizon & Lake model $-$ WB & CNN $-$ Lake model \\
+Horizon & Lake $-$ WB & CNN $-$ Lake & WB + Snow $-$ WB & Lake + Snow $-$ Lake \\
 \hline\hline
-1 & $+0.05$\ \ $[0.02,\ 0.07]$ & $-0.00$\ \ $[-0.01,\ 0.01]$ \\
-2 & $+0.05$\ \ $[0.00,\ 0.09]$ & $-0.01$\ \ $[-0.03,\ 0.01]$ \\
-3 & $+0.07$\ \ $[0.00,\ 0.13]$ & $-0.01$\ \ $[-0.06,\ 0.02]$ \\
-4 & $+0.09$\ \ $[0.01,\ 0.17]$ & $-0.02$\ \ $[-0.11,\ 0.06]$ \\
-5 & $+0.11$\ \ $[0.01,\ 0.21]$ & $-0.03$\ \ $[-0.15,\ 0.10]$ \\
-6 & $+0.12$\ \ $[-0.00,\ 0.24]$ & $-0.02$\ \ $[-0.19,\ 0.14]$ \\
+1 & $+0.05$\ \ $[0.02,\ 0.07]$ & $-0.00$\ \ $[-0.01,\ 0.01]$ & $-0.00$\ \ $[-0.04,\ 0.04]$
+& $-0.01$\ \ $[-0.04,\ 0.02]$ \\
+2 & $+0.05$\ \ $[0.00,\ 0.09]$ & $-0.01$\ \ $[-0.03,\ 0.01]$ & $-0.08$\ \ $[-0.20,\ 0.08]$
+& $-0.08$\ \ $[-0.19,\ 0.05]$ \\
+3 & $+0.07$\ \ $[0.00,\ 0.13]$ & $-0.01$\ \ $[-0.06,\ 0.02]$ & $-0.15$\ \ $[-0.35,\ 0.07]$
+& $-0.15$\ \ $[-0.32,\ 0.05]$ \\
+4 & $+0.09$\ \ $[0.01,\ 0.17]$ & $-0.02$\ \ $[-0.11,\ 0.06]$ & $-0.23$\ \ $[-0.51,\ 0.09]$
+& $-0.22$\ \ $[-0.47,\ 0.07]$ \\
+5 & $+0.11$\ \ $[0.01,\ 0.21]$ & $-0.03$\ \ $[-0.15,\ 0.10]$ & $-0.31$\ \ $[-0.62,\ 0.04]$
+& $-0.29$\ \ $[-0.58,\ 0.03]$ \\
+6 & $+0.12$\ \ $[-0.00,\ 0.24]$ & $-0.02$\ \ $[-0.19,\ 0.14]$ & $-0.41$\ \ $[-0.76,\ -0.01]$
+& $-0.38$\ \ $[-0.72,\ -0.01]$ \\
 \hline\hline
 \end{tabular}
 \end{table}
@@ -954,7 +1057,10 @@ Horizon & Lake model $-$ WB & CNN $-$ Lake model \\
 The lake model is worse than the water-balance model by only 0.05--0.12\,cm, but the gap is so
 steady from year to year that its interval stays at or above zero at one to five months and only
 just reaches zero at six months. So the extra physical detail made the forecasts slightly, but
-measurably, worse. The CNN and the lake model cannot be told apart at any horizon.
+measurably, worse. The CNN and the lake model cannot be told apart at any horizon. The snowpack
+works the other way: its gain grows with the horizon for both physical models, and at six months
+the whole interval lies below zero for both. At shorter horizons the gain is smaller than the
+sampling uncertainty, but it is negative at every horizon for both models.
 
 \subsection{What the Water-Balance Model Learned}
 
@@ -1043,6 +1149,36 @@ corresponds to only about 1,100\,m$^3$/s, less than even the average net outflow
 and $n_m$ can only be fitted together, so the model learns how strongly the outflow responds to
 the level, but not how large the outflow really is.
 
+\subsection{What the Snowpack Model Learned}
+\label{sec:snowresult}
+
+Table~\ref{tab:snowparams} lists the five numbers of the snowpack model fitted on the full record.
+
+\begin{table}[htbp]
+\centering
+\caption{Numbers of the snowpack model (Equations~\ref{eq:snow} and \ref{eq:store}) fitted on
+1950--2023.}
+\label{tab:snowparams}
+\begin{tabular}{||l|c|c||}
+\hline\hline
+Number & Symbol & Fitted value \\
+\hline\hline
+Melt per positive degree-day & $f$ & 2.59\,mm per $^\circ$C per day \\
+Share of the store released each month & $\kappa$ & 0.34 \\
+Evapotranspiration per degree-day & $\eta$ & 0.13\,mm over the lake \\
+Scale of the Michigan basin & $\alpha_{\mathrm{Mic}}$ & 0.55 \\
+Scale of the Huron basin & $\alpha_{\mathrm{Hur}}$ & 0.45 \\
+\hline\hline
+\end{tabular}
+\end{table}
+
+The store releases about a third of its water each month, so water that reaches it stays for
+about $1/\kappa \approx 3$ months on average before it flows into the lake. Snow that melts in
+April therefore keeps raising the runoff into early summer. Both basins contribute, with similar
+scales. The gain in Table~\ref{tab:boot2} grows with the horizon for the same reason:
+the snowpack matters most for the total runoff of the next several months, not for the next
+month alone.
+
 \subsection{What the CNN Learned}
 \label{sec:cnnresult}
 
@@ -1104,8 +1240,9 @@ the lake was low, and the inflow from Lake Superior, which was very high in
 
 Both the water-balance model and gradient boosting followed the rise at a six-month lead with
 similar accuracy, with an RMSE of 15.0 and 14.6\,cm for target months in 2013--2020, against
-26.7\,cm for persistence. The lake model and the CNN were close behind, at 15.1\,cm each. None
-of them saw the rise coming. Figure~\ref{fig:case} shows the water-balance model and gradient
+26.7\,cm for persistence. The lake model and the CNN were close behind, at 15.1\,cm each, and the
+snowpack did not help in these years (15.0\,cm for the water balance with it). None of them saw
+the rise coming. Figure~\ref{fig:case} shows the water-balance model and gradient
 boosting lagging behind the two steepest climbs, in 2014 and 2019. This is exactly what is
 expected from a model that fills in the future supply with averages: it can follow a rise step
 by step as the wet months arrive, but it cannot know in advance that the next six months will be
@@ -1120,10 +1257,11 @@ and it appears only when the weather is known.
 
 \section{Discussion}
 
-The results of this case study point to one main finding: no model clearly beat the simple
-water-balance regression. More flexibility (gradient boosting, the hybrid and the CNN) did not
-improve on it, and neither did more physical detail (the lake model). The reason can be seen in
-the physics. Equation~\ref{eq:bathtub} is linear in the supply terms, so a linear regression with
+The results of this case study point to one main finding: the forecasts improved only when
+better physical information was added to the inputs. More flexibility (gradient boosting, the
+hybrid and the CNN) did not improve on the simple water-balance regression, and neither did more
+physical detail in the lake itself (the lake model). Adding the snowpack on the land did. The
+reason the flexible models did not help can be seen in the physics. Equation~\ref{eq:bathtub} is linear in the supply terms, so a linear regression with
 the right inputs already has the correct shape. The trees have to rediscover that shape from only
 a few hundred training months, and they have nothing to gain from being non-linear. The hybrid
 model shows the same thing from the other side: when the trees were asked only for what the
@@ -1144,6 +1282,15 @@ than the AR(1) model from the recent record of the lake. It could not: in 39 of 
 early stopping kept the untrained network. The design did have one benefit. Because the network
 starts as the lake model and early stopping only accepts changes that help on held-out years, it
 could not do much harm, and its error stayed within 0.03\,cm of the lake model at every horizon.
+
+The snowpack model shows where physics does pay off. The AR(1) forecast treats runoff as a series
+that slowly forgets its last anomaly, but much of the water that reaches the lake in spring is
+already lying on the land at the end of winter, as snow. A model that tracks that snow with the
+daily temperature and precipitation over the land can see it, and the gain grows with the horizon
+because the snow feeds the runoff of several months. The gain is modest, 0.41\,cm or about 3\% at
+six months, and it is clearly larger than the sampling uncertainty only at six months. It also
+came from a deliberately simple model, so a more complete snow model, or measured snow, may do
+better.
 
 The perfect-forcing runs show where the real limit is. Knowing the future weather would cut the
 six-month error of the water-balance model from 14.66\,cm to 8.49\,cm, a 42\% reduction, which is
@@ -1178,6 +1325,9 @@ small amount of rounding noise to the monthly changes.
 a small CNN, each with one fixed setting and on a few hundred training months. The result shows
 that a reasonable off-the-shelf model, and a small network built around the physics, do not beat
 the water-balance model here. It does not show that no machine learning approach could.
+\item \textbf{Simple Snowpack Model}: The snowpack is simulated, not measured. The model uses a
+fixed 0\,$^\circ$C threshold between rain and snow, one melt factor for both basins and one store
+for all of the land, and its gain only clearly exceeds the sampling uncertainty at six months.
 \item \textbf{Data Delay}: $P$, $E$ and $R$ for month $t$ are assumed to be known at the end of
 month $t$. In practice these estimates are published later, so the real-time skill would be
 somewhat lower.
@@ -1187,20 +1337,23 @@ somewhat lower.
 
 This case study built a complete forecasting pipeline for the monthly level of Lake
 Michigan--Huron and compared machine learning models with models built on the physics of the
-lake. No model was clearly more accurate than a 19-parameter water-balance regression at any
-horizon from one to six months: not gradient boosting, not a hybrid of the two, not a more
-detailed 17-parameter lake model with a curved outflow, and not a CNN that corrects the weather
-driving that lake model. Most of the improvement over persistence came from the seasonal
-cycle. Knowing the recent supply added a further 22\% at one month and little beyond three
+lake. No more flexible or more detailed model was clearly more accurate than a 19-parameter
+water-balance regression at any horizon from one to six months: not gradient boosting, not a
+hybrid of the two, not a 17-parameter lake model with a curved outflow, and not a CNN that
+corrects the weather driving that lake model. What did help was better physics in the inputs: a
+simulated snowpack on the land improved the runoff forecast and lowered the six-month error of
+the water-balance model from 14.66 to 14.25\,cm, which made it the best real forecast at every
+horizon. Most of the improvement over persistence came from the seasonal cycle. Knowing the recent supply added a further 22\% at one month and little beyond three
 months. The run with the observed weather showed that the error could be cut by more than 40\%
 at two to six months if the future precipitation, evaporation and runoff were known.
 
 The practical lesson is that the next improvement is more likely to come from better inputs than
-from a more flexible or a more detailed model. Useful inputs would be seasonal climate forecasts
-of precipitation and temperature, the snowpack at the end of winter (which controls the spring
-runoff), the lake surface temperature and ice cover (which control evaporation), and measured
-flows in the connecting rivers, which would also let the lake model make use of its physical
-structure. Machine learning may well earn its place once those inputs are available, and this
+from a more flexible or a more detailed model. The snowpack result supports this: the one
+physical addition to the inputs improved the forecasts, while the additions to the model did
+not. Further useful inputs would be seasonal climate forecasts of precipitation and temperature,
+measured snow on the ground, the lake surface temperature and ice cover (which control
+evaporation), and measured flows in the connecting rivers, which would also let the lake model
+make use of its physical structure. Machine learning may well earn its place once those inputs are available, and this
 backtest gives the baseline to test it against.
 
 \begin{thebibliography}{99}
@@ -1228,8 +1381,9 @@ temperature. \emph{Water Resources Research}, 55(11):9173--9190, 2019.
 \bibitem{glerl}
 NOAA Great Lakes Environmental Research Laboratory. Great Lakes monthly hydrologic data
 (1860--2024). \url{https://www.glerl.noaa.gov/ahps/mnth-hydro.html}. Data files:
-\url{https://www.glerl.noaa.gov/pubs/tech_reports/glerl-083/UpdatedFiles/} (downloaded October
-12, 2026).
+\url{https://www.glerl.noaa.gov/pubs/tech_reports/glerl-083/UpdatedFiles/} and
+\url{https://www.glerl.noaa.gov/pubs/tech_reports/glerl-083/UpdatedFiles/daily/} (downloaded
+October 12 and 20, 2026).
 
 \bibitem{hunter2015}
 T.~S. Hunter, A.~H. Clites, K.~B. Campbell and A.~D. Gronewold. Development and application of
@@ -1252,6 +1406,10 @@ OTexts, Melbourne, Australia, 2021. \url{https://otexts.com/fpp3/}
 P.~Virtanen, R.~Gommers, T.~E. Oliphant, et al. SciPy 1.0: Fundamental algorithms for scientific
 computing in Python. \emph{Nature Methods}, 17(3):261--272, 2020.
 \url{https://doi.org/10.1038/s41592-019-0686-2}
+
+\bibitem{hock2003}
+R.~Hock. Temperature index melt modelling in mountain areas. \emph{Journal of Hydrology},
+282(1--4):104--115, 2003. \url{https://doi.org/10.1016/S0022-1694(03)00257-9}
 
 \bibitem{friedman2001}
 J.~H. Friedman. Greedy function approximation: A gradient boosting machine. \emph{The Annals of
@@ -1424,6 +1582,16 @@ def build_monthly():
     assert df.notna().all().all(), "unexpected gap inside the analysis period"
     df.index.name = "month"
     return df
+
+
+LAND = [f"{v}_{b}" for b in ("mic", "hur") for v in ("snow", "rain", "pdd")]
+
+
+def read_land_weather(lake):
+    d = pd.read_csv(RAW / f"subdata_{lake}_land.csv", comment="#", sep=r"\s*,\s*", engine="python")
+    t, month = (d["AirTempMin"] + d["AirTempMax"]) / 2, pd.PeriodIndex(d["Date"], freq="M")
+    return pd.DataFrame({f"snow_{lake}": d["Precip"].where(t < 0, 0.0), f"rain_{lake}": d["Precip"].where(t >= 0, 0.0),
+                         f"pdd_{lake}": t.clip(lower=0)}).groupby(month).sum()
 \end{lstlisting}
 
 \begin{lstlisting}[caption={Baseline models: persistence and seasonal climatology}]
@@ -1545,6 +1713,66 @@ class LakeModel(WaterBalance):
         return self._changes(self.p_, *self._inputs(df, origins, max(horizons), self.perfect_forcing))[:, np.array(horizons) - 1]
 \end{lstlisting}
 
+\begin{lstlisting}[caption={Snowpack model}]
+class SnowRunoff:
+    # p = [ddf (mm of melt per degree-day), k (share of basin storage released per month),
+    #      e (evapotranspiration per degree-day), a_mic, a_hur (scale of the water reaching each basin)]
+    bounds = ([0, 0.01, 0, 0, 0], [20, 1, 20, 5, 5])
+
+    def fit(self, train):
+        self.clim_, self.end_ = train[LAND].groupby(month_of(train.index)).mean(), train.index[-1]
+        origins = train.index[12 : -max(HORIZONS)]
+        y = np.column_stack([train["runoff_mm"].shift(-h).loc[origins] for h in HORIZONS])
+        self.p_ = least_squares(lambda p: (self._run(p, train, origins, max(HORIZONS), True) - y).ravel(),
+                                [3, 0.5, 0.3, 0.3, 0.3], bounds=self.bounds).x
+        return self
+
+    def _step(self, p, swe, s, snow, rain, pdd):
+        swe = swe + snow
+        melt = np.minimum(swe, p[0] * pdd)
+        s = np.maximum(s + (rain + melt) @ p[3:] - p[2] * pdd.mean(axis=-1), 0)
+        return swe - melt, (1 - p[1]) * s, p[1] * s
+
+    def _run(self, p, df, origins, n_months, observed, normal_snow=False):
+        swe, s = np.zeros(2), 0.0
+        snowpack = []
+        for snow, rain, pdd in df[LAND].to_numpy().reshape(-1, 2, 3).transpose(0, 2, 1):
+            swe, s, _ = self._step(p, swe, s, snow, rain, pdd)
+            snowpack.append(swe)
+        swe = np.array(snowpack)[df.index.get_indexer(origins)]
+        if normal_snow:  # the average snowpack of the origin's calendar month instead of this year's
+            swe = pd.DataFrame(np.array(snowpack), index=df.index).loc[: self.end_].groupby(month_of(df.index[df.index <= self.end_])).mean().loc[origins.month].to_numpy()
+        s, out = df.loc[origins, "runoff_mm"].to_numpy() * (1 - p[1]) / p[1], []  # storage implied by this month's runoff
+        for k in range(1, n_months + 1):
+            land = (df.loc[origins + k, LAND] if observed else self.clim_.loc[(origins + k).month]).to_numpy()
+            swe, s, r = self._step(p, swe, s, *land.reshape(-1, 2, 3).transpose(2, 0, 1))
+            out.append(r)
+        return np.column_stack(out)
+
+    def forecast(self, df, origins, n_months):  # extra runoff caused by an unusual snowpack
+        return self._run(self.p_, df, origins, n_months, False) - self._run(self.p_, df, origins, n_months, False, True)
+
+
+class SnowForcing:
+    def fit(self, train):
+        self.snow_ = SnowRunoff().fit(train)
+        return super().fit(train)
+
+    def _forcing(self, df, origins, k, observed):
+        x = super()._forcing(df, origins, k, observed)
+        if not observed:
+            x[:, 2] += self.snow_.forecast(df, origins, k)[:, -1]
+        return x
+
+
+class SnowWaterBalance(SnowForcing, WaterBalance):
+    pass
+
+
+class SnowLakeModel(SnowForcing, LakeModel):
+    pass
+\end{lstlisting}
+
 \begin{lstlisting}[caption={Features, gradient boosting and the hybrid}]
 def make_features(df):
     f = pd.DataFrame(index=df.index)
@@ -1664,7 +1892,9 @@ def all_models():
         "Persistence": Persistence(),
         "Seasonal climatology": SeasonalClimatology(),
         "Water balance": WaterBalance(),
+        "Water balance + snowpack": SnowWaterBalance(),
         "Lake model": LakeModel(),
+        "Lake model + snowpack": SnowLakeModel(),
         "Gradient boosting": GradientBoosting(),
         "Hybrid (WB + GB residual)": GradientBoosting(base=WaterBalance()),
         "Physics-guided CNN": PhysicsCNN(),
