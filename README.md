@@ -35,6 +35,8 @@ pip install -r requirements.txt
 
 Run `notebooks/data_processing.ipynb`, then `notebooks/main.ipynb` from top to bottom (about 11 minutes).
 
+The results in the report were produced with Python 3.13.16, NumPy 2.5.3, pandas 3.0.6, scikit-learn 1.9.1, SciPy 1.18.1, PyTorch 2.14.1 and Matplotlib 3.11.2. Other versions should run, but the gradient-boosting results can differ slightly (by a few hundredths of a centimeter) between scikit-learn versions.
+
 
 # Project layout
 
