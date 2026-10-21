@@ -239,6 +239,18 @@ $\ell$ & Level at the boundary between months $t-1$ and $t$ \\
 \end{tabular}
 \end{table}
 
+A few more checks were done on the merged table. No two years between 1950 and 2023 have nearly
+the same twelve values, which is how the filled-in years 1941--1944 were found, and no
+precipitation value is negative. Evaporation is negative in 104 months, all of them from May to
+August. This is when the lake is colder than the air above it and water condenses onto it, so
+these values are real and were kept. The only months more than four standard deviations from the
+average of their calendar month are the precipitation of September 1986 and the runoff of
+September and October 1986. This was the wet autumn that took the lake to its record high in
+October 1986, so these months were kept as well. The level file also has columns that were not
+used. The column labeled as the level in feet actually holds a level in meters, about 4.5\,cm
+below the one used here, the ice-concentration column is empty, and the surface water
+temperature only starts in 1995.
+
 Before building any model, a quick check was done to see whether the bathtub picture holds
 (Figure~\ref{fig:wbcheck}). By Equation~\ref{eq:twomonth}, the monthly level change should
 follow the mean NBS of this month and the previous month with a slope of 1. The fitted slope is
