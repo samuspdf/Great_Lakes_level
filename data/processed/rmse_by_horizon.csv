@@ -6,6 +6,7 @@ Water balance + snowpack,3.215,6.257,8.665,10.792,12.656,14.253
 Lake model,3.264,6.380,8.881,11.117,13.076,14.783
 Lake model + snowpack,3.251,6.298,8.732,10.894,12.785,14.398
 Gradient boosting,3.323,6.514,9.116,11.403,13.485,15.394
+Gradient boosting + snowpack,3.309,6.493,9.021,11.305,13.550,15.141
 Hybrid (WB + GB residual),3.264,6.346,8.950,11.178,12.999,14.582
 Physics-guided CNN,3.262,6.372,8.868,11.097,13.051,14.762
 "WB, perfect forcing (upper bound)",2.393,3.767,5.079,6.291,7.429,8.487

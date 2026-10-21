@@ -3,6 +3,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath}
 \usepackage{amssymb}
+\usepackage{array}
 \usepackage{graphicx}
 \usepackage{float}
 \usepackage[section]{placeins}
@@ -338,8 +339,9 @@ Evaporation & $E_t,\ E_{t-1},\ E_{t-2}$ & 3 \\
 Runoff & $R_t,\ R_{t-1},\ R_{t-2}$ & 3 \\
 Accumulated NBS & $S^{(3)}_t,\ S^{(6)}_t,\ S^{(12)}_t$ & 3 \\
 Season & $\sin(2\pi m/12),\ \cos(2\pi m/12)$ & 2 \\
+Snowpack (Section~\ref{sec:snow}; snowpack version only) & $W_{\mathrm{Mic},t},\ W_{\mathrm{Hur},t}$ & 2 \\
 \hline\hline
-Total & & 18 \\
+Total & & 18 (20) \\
 \hline\hline
 \end{tabular}
 \end{table}
@@ -375,11 +377,49 @@ month of $Y$ at every horizon. The forecast for target month $T$ at horizon $h$ 
 the origin $T - h$. After that, the training window grows by one year and the process repeats.
 The first training set covers 1950--1979, so the first fit already has 30 years of data. This
 gives $44 \times 12 = 528$ forecasts per model and horizon, and every model was fitted without
-seeing any month of the year it was tested on.
+seeing any month of the year it was tested on. Figure~\ref{fig:backtest} shows the scheme.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig10_backtest.png}
+\caption{The rolling-origin backtest. For each test year from 1980 to 2023, every model is fitted
+again on all the years before it (gray) and then forecasts every month of the test year (orange),
+from origins one to six months earlier.}
+\label{fig:backtest}
+\end{figure}
 
 \section{Methodology}
 
+Table~\ref{tab:models} lists all the models compared in this study. They differ in how much of the
+physics of the lake they use, and in how they fill in the weather of the coming months, which no
+model can know.
+
+\begin{table}[htbp]
+\centering
+\caption{The models compared in this study.}
+\label{tab:models}
+\small
+\begin{tabular}{||>{\raggedright\arraybackslash}p{3.3cm}|>{\raggedright\arraybackslash}p{2.6cm}|>{\raggedright\arraybackslash}p{3.2cm}|>{\raggedright\arraybackslash}p{3.4cm}|c||}
+\hline\hline
+Model & Kind & Future weather & What is fitted & Section \\
+\hline\hline
+Persistence & Baseline & Not needed & Nothing & \ref{sec:baselines} \\
+Seasonal climatology & Baseline & Not needed & 12 monthly averages & \ref{sec:baselines} \\
+Water balance & Physics (regression) & AR(1) forecast & 19 coefficients & \ref{sec:wb} \\
+Lake model & Physics (simulation) & AR(1) forecast & 17 parameters & \ref{sec:lake} \\
+Water balance + snowpack & Physics & AR(1) + snowpack & 19 + 5 parameters & \ref{sec:snow} \\
+Lake model + snowpack & Physics & AR(1) + snowpack & 17 + 5 parameters & \ref{sec:snow} \\
+Gradient boosting & Machine learning & Not needed & $6 \times 300$ trees & \ref{sec:gb} \\
+Gradient boosting + snowpack & Machine learning & Not needed & 5 parameters + $6 \times 300$ trees & \ref{sec:snow} \\
+Hybrid & Physics + machine learning & AR(1) forecast & 19 coefficients + $6 \times 300$ trees & \ref{sec:hybrid} \\
+Physics-guided CNN & Physics + machine learning & AR(1), corrected by the CNN & 17 parameters + network weights & \ref{sec:cnn} \\
+Perfect forcing (two runs) & Upper bound & The observed weather & As the water balance or lake model & \ref{sec:wb}, \ref{sec:lake} \\
+\hline\hline
+\end{tabular}
+\end{table}
+
 \subsection{Baseline Models}
+\label{sec:baselines}
 
 Two simple models were built first. They are the benchmarks that any useful model has to beat.
 
@@ -427,6 +467,19 @@ changes only through the water crossing its boundary:
 where $A$ is the lake surface area, $p$ and $e$ are the precipitation and evaporation rates over
 the lake, $Q_R$ is the runoff from the land, $Q_{\mathrm{in}}$ is the inflow from Lake Superior
 through the St.~Marys River, and $Q_{\mathrm{out}}$ is the outflow through the St.~Clair River.
+Figure~\ref{fig:system} shows these flows, which of them are in the data, and the snowpack model
+of Section~\ref{sec:snow}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{fig9_lake_system.png}
+\caption{The water balance of Lake Michigan--Huron. Precipitation, evaporation and runoff (solid
+arrows) are in the data; the inflow from Lake Superior and the outflow through the St.~Clair
+River (dashed arrows) are not. The purple boxes are the snowpack model of
+Section~\ref{sec:snow}, which is driven by the daily air temperature and precipitation over the
+land.}
+\label{fig:system}
+\end{figure}
 The area barely changes over the observed range of levels, so $dV = A\,dL$, and dividing by $A$
 turns every term into a depth of water:
 \begin{equation}
@@ -645,7 +698,12 @@ the AR(1) runoff forecast entirely, and one without evapotranspiration. Both for
 worse than AR(1) in those years and were dropped before any test year was used. The version above
 improved the level forecasts of both physical models on the 1970s. The water-balance and lake
 models that use Equation~\ref{eq:snowforecast} for their runoff are called \emph{water balance +
-snowpack} and \emph{lake model + snowpack}; nothing else in them changes.
+snowpack} and \emph{lake model + snowpack}; nothing else in them changes. The simulated snowpack
+of each basin at the origin, $W_{\mathrm{Mic},t}$ and $W_{\mathrm{Hur},t}$, was also given to
+gradient boosting as two extra features, to test whether the machine learning model gains from
+the same physics. This model is called \emph{gradient boosting + snowpack}. A check on 1950--1979
+showed it improving on plain gradient boosting at three to six months before any test year was
+used.
 Table~\ref{tab:notation-snow} summarizes the notation used in
 Equations~\ref{eq:snow}--\ref{eq:snowforecast}.
 
@@ -672,6 +730,7 @@ $\hat X^{\mathrm{snow}}_{R,t+k}$ & Runoff forecast used by the snowpack variants
 \end{table}
 
 \subsection{Gradient Boosting}
+\label{sec:gb}
 
 The machine learning model of choice here was gradient boosting~\cite{friedman2001} with
 regression trees~\cite{cart}, from the scikit-learn library~\cite{sklearn}. A regression tree
@@ -716,6 +775,7 @@ Random seed & 0 & Makes the results repeatable \\
 \end{table}
 
 \subsection{Hybrid Model}
+\label{sec:hybrid}
 
 The hybrid model combines the two approaches. The trees are not trained on the level change
 itself, but on what the water-balance model got wrong:
@@ -978,6 +1038,7 @@ Water balance + snowpack & \textbf{3.22} & \textbf{6.26} & \textbf{8.67} & \text
 Lake model & 3.26 & 6.38 & 8.88 & 11.12 & 13.08 & 14.78 \\
 Lake model + snowpack & 3.25 & 6.30 & 8.73 & 10.89 & 12.79 & 14.40 \\
 Gradient boosting & 3.32 & 6.51 & 9.12 & 11.40 & 13.48 & 15.39 \\
+Gradient boosting + snowpack & 3.31 & 6.49 & 9.02 & 11.30 & 13.55 & 15.14 \\
 Hybrid (water balance + boosting) & 3.26 & 6.35 & 8.95 & 11.18 & 13.00 & 14.58 \\
 Physics-guided CNN & 3.26 & 6.37 & 8.87 & 11.10 & 13.05 & 14.76 \\
 \hline\hline
@@ -1019,6 +1080,9 @@ the water-balance model at every horizon, by 0.08\,cm at two months and 0.41\,cm
 from 14.66 to 14.25\,cm. This made it the best real forecast at every horizon, and its reduction
 over the seasonal climatology at four to six months rose from 4--5\% to 6--7\%. The lake model
 gained almost as much, from 14.78 to 14.40\,cm at six months.
+\item \textbf{Gradient Boosting Gained Less from the Snowpack}: Given the simulated snowpack as two
+extra features, gradient boosting improved at five of the six horizons, most at six months (from
+15.39 to 15.14\,cm), but it stayed behind the water-balance model at every horizon.
 \item \textbf{The Weather Sets the Limit}: With the observed future weather, the same
 water-balance model reached 2.39\,cm at one month and 8.49\,cm at six months. That is 26\% lower
 than the real water-balance forecast at one month and 40--43\% lower at two to six months. The
@@ -1099,7 +1163,10 @@ just reaches zero at six months. So the extra physical detail made the forecasts
 measurably, worse. The CNN and the lake model cannot be told apart at any horizon. The snowpack
 works the other way: its gain grows with the horizon for both physical models, and at six months
 the whole interval lies below zero for both. At shorter horizons the gain is smaller than the
-sampling uncertainty, but it is negative at every horizon for both models.
+sampling uncertainty, but it is negative at every horizon for both models. For gradient boosting
+the snowpack changed the RMSE by $-0.25$ to $+0.07$\,cm, and every interval includes zero (at six
+months, $-0.25$\,cm with the interval $[-0.69,\ 0.25]$), so its gain cannot be told apart from
+luck.
 
 \subsection{What the Water-Balance Model Learned}
 
@@ -1296,8 +1363,8 @@ the lake was low, and the inflow from Lake Superior, which was very high in
 Both the water-balance model and gradient boosting followed the rise at a six-month lead with
 similar accuracy, with an RMSE of 15.0 and 14.6\,cm for target months in 2013--2020, against
 26.7\,cm for persistence. The lake model and the CNN were close behind, at 15.1\,cm each, and the
-snowpack did not help in these years (15.0\,cm for the water balance with it). None of them saw
-the rise coming. Figure~\ref{fig:case} shows the water-balance model and gradient
+snowpack did not help in these years (15.0\,cm for the water balance with it, and 15.5\,cm for
+gradient boosting with it, against 14.6\,cm without). None of them saw the rise coming. Figure~\ref{fig:case} shows the water-balance model and gradient
 boosting lagging behind the two steepest climbs, in 2014 and 2019. This is exactly what is
 expected from a model that fills in the future supply with averages: it can follow a rise step
 by step as the wet months arrive, but it cannot know in advance that the next six months will be
@@ -1395,7 +1462,9 @@ daily temperature and precipitation over the land can see it, and the gain grows
 because the snow feeds the runoff of several months. The gain is modest, 0.41\,cm or about 3\% at
 six months, and it is clearly larger than the sampling uncertainty only at six months. It also
 came from a deliberately simple model, so a more complete snow model, or measured snow, may do
-better.
+better. Gradient boosting, given the same snowpack as two extra features, gained less and not
+significantly. The physical models can use the snowpack in the right place, as water that will
+reach the lake, while the trees have to learn that from a few hundred training months.
 
 The perfect-forcing runs show where the real limit is. Knowing the future weather would cut the
 six-month error of the water-balance model from 14.66\,cm to 8.49\,cm, a 42\% reduction, which is
@@ -1925,9 +1994,12 @@ class GradientBoosting:
     def __init__(self, base=None):
         self.base = base
 
+    def _features(self, df):
+        return make_features(df)
+
     def fit(self, train):
         self.models_ = {}
-        feats = make_features(train)
+        feats = self._features(train)
         ok = feats.notna().all(axis=1)
         if self.base is not None:
             self.base.fit(train)
@@ -1946,11 +2018,20 @@ class GradientBoosting:
     def predict(self, df, origins, horizons):
         # Features are backward-looking, so computing them on the full table
         # does not leak future information into a given origin's row.
-        feats = make_features(df).loc[origins]
+        feats = self._features(df).loc[origins]
         out = np.column_stack([self.models_[h].predict(feats) for h in horizons])
         if self.base is not None:
             out = out + self.base.predict(df, origins, horizons)
         return out
+
+
+class SnowGradientBoosting(GradientBoosting):
+    def fit(self, train):
+        self.snow_ = SnowRunoff().fit(train)
+        return super().fit(train)
+
+    def _features(self, df):
+        return make_features(df).join(self.snow_.snowpack(df).add_prefix("snowpack_"))
 \end{lstlisting}
 
 \begin{lstlisting}[caption={Physics-guided CNN and the list of models}]
@@ -2021,6 +2102,7 @@ def all_models():
         "Lake model": LakeModel(),
         "Lake model + snowpack": SnowLakeModel(),
         "Gradient boosting": GradientBoosting(),
+        "Gradient boosting + snowpack": SnowGradientBoosting(),
         "Hybrid (WB + GB residual)": GradientBoosting(base=WaterBalance()),
         "Physics-guided CNN": PhysicsCNN(),
         "WB, perfect forcing (upper bound)": WaterBalance(perfect_forcing=True),

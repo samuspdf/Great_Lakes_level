@@ -2,7 +2,7 @@
 
 This project explores whether a machine learning model can forecast the Lake Michigan–Huron level of water one to six months in advance better than a physics-based model.
 
-We merge the 74-year public data from the National Oceanic and Atmospheric Administration (NOAA) and the Great Lakes Observing System (GLOS) into a table with monthly intervals. It then compares nine forecast models, including a physical lake model, a snowpack model for the runoff and a physics-guided convolutional neural network, plus two runs given the observed weather as upper bounds, over the 44 test years.
+We merge the 74-year public data from the National Oceanic and Atmospheric Administration (NOAA) and the Great Lakes Observing System (GLOS) into a table with monthly intervals. It then compares ten forecast models, including a physical lake model, a snowpack model for the runoff and a physics-guided convolutional neural network, plus two runs given the observed weather as upper bounds, over the 44 test years.
 
 The full write-up is [report/report.pdf](report/report.pdf).
 
@@ -20,6 +20,7 @@ Root-mean-square error of the forecast level, test years 1980–2023 (lower is b
 | Lake model | 3.26 cm | 14.78 cm |
 | Lake model + snowpack | 3.25 cm | 14.40 cm |
 | Gradient boosting | 3.32 cm | 15.39 cm |
+| Gradient boosting + snowpack | 3.31 cm | 15.14 cm |
 | Hybrid (water balance + boosting) | 3.26 cm | 14.58 cm |
 | Physics-guided CNN | 3.26 cm | 14.76 cm |
 
@@ -41,6 +42,6 @@ Run `notebooks/data_processing.ipynb`, then `notebooks/main.ipynb` from top to b
 data/raw/         nine raw NOAA/GLOS files (never modified)
 data/processed/   merged monthly table, forecasts and result tables
 notebooks/        the analysis
-figures/          the eight report figures
+figures/          the ten report figures
 report/           report.tex and report.pdf, the full write-up
 ```
