@@ -7,6 +7,8 @@ Lake model,3.264,6.380,8.881,11.117,13.076,14.783
 Lake model + snowpack,3.251,6.298,8.732,10.894,12.785,14.398
 Gradient boosting,3.323,6.514,9.116,11.403,13.485,15.394
 Gradient boosting + snowpack,3.309,6.493,9.021,11.305,13.550,15.141
+"Gradient boosting, tuned",3.420,6.449,8.933,11.505,14.042,16.091
+Linear regression (same features),3.174,6.370,8.742,10.736,12.490,14.060
 Hybrid (WB + GB residual),3.264,6.346,8.950,11.178,12.999,14.582
 Physics-guided CNN,3.262,6.372,8.868,11.097,13.051,14.762
 "WB, perfect forcing (upper bound)",2.393,3.767,5.079,6.291,7.429,8.487

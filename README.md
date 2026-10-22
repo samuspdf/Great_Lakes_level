@@ -2,7 +2,7 @@
 
 This project explores whether a machine learning model can forecast the Lake Michigan–Huron level of water one to six months in advance better than a physics-based model.
 
-We merge the 74-year public data from the National Oceanic and Atmospheric Administration (NOAA) and the Great Lakes Observing System (GLOS) into a table with monthly intervals. It then compares ten forecast models, including a physical lake model, a snowpack model for the runoff and a physics-guided convolutional neural network, plus two runs given the observed weather as upper bounds, over the 44 test years.
+We merge the 74-year public data from the National Oceanic and Atmospheric Administration (NOAA) and the Great Lakes Observing System (GLOS) into a table with monthly intervals. It then compares twelve forecast models, including a physical lake model, a snowpack model for the runoff, a physics-guided convolutional neural network, gradient boosting with fixed and with tuned settings, and a linear regression on the same inputs as gradient boosting, plus two runs given the observed weather as upper bounds, over the 44 test years. It also tests how much skill is lost when the weather data arrive one to three months late.
 
 The full write-up is [report/report.pdf](report/report.pdf).
 
@@ -21,10 +21,12 @@ Root-mean-square error of the forecast level, test years 1980–2023 (lower is b
 | Lake model + snowpack | 3.25 cm | 14.40 cm |
 | Gradient boosting | 3.32 cm | 15.39 cm |
 | Gradient boosting + snowpack | 3.31 cm | 15.14 cm |
+| Gradient boosting, tuned | 3.42 cm | 16.09 cm |
+| Linear regression (same inputs as gradient boosting) | 3.17 cm | 14.06 cm |
 | Hybrid (water balance + boosting) | 3.26 cm | 14.58 cm |
 | Physics-guided CNN | 3.26 cm | 14.76 cm |
 
-The water-balance model with a snowpack model for the runoff is the most accurate at every horizon. No machine learning model was clearly better than the plain water-balance model.
+A linear regression on the same inputs as gradient boosting had the lowest error at one and at four to six months, and the water-balance model with a snowpack model for the runoff at two and three months, but the two cannot be told apart. The linear regression beat gradient boosting at every horizon, and tuning gradient boosting on 1950–1979 made it worse at five and six months. No machine learning model was clearly better than the plain water-balance model.
 
 
 # How to run
@@ -33,9 +35,9 @@ The water-balance model with a snowpack model for the runoff is the most accurat
 pip install -r requirements.txt
 ```
 
-Run `notebooks/data_processing.ipynb`, then `notebooks/main.ipynb` from top to bottom (about 11 minutes).
+Run `notebooks/data_processing.ipynb`, then `notebooks/main.ipynb` from top to bottom (about 25 minutes).
 
-The results in the report were produced with Python 3.13.16, NumPy 2.5.3, pandas 3.0.6, scikit-learn 1.9.1, SciPy 1.18.1, PyTorch 2.14.1 and Matplotlib 3.11.2. Other versions should run, but the gradient-boosting results can differ slightly (by a few hundredths of a centimeter) between scikit-learn versions.
+The results in the report were produced with Python 3.13.16, NumPy 2.5.3, pandas 3.0.6, scikit-learn 1.9.1, SciPy 1.18.1, PyTorch 2.14.1, joblib 1.6.0 and Matplotlib 3.11.2. Other versions should run, but the gradient-boosting results can differ slightly (by a few hundredths of a centimeter) between scikit-learn versions.
 
 
 # Project layout

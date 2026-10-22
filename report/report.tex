@@ -40,7 +40,7 @@
 \title{Forecasting Lake Michigan--Huron Water Levels with Machine Learning:\\
 A Comparison with Physics-Based Models}
 \author{Samundra Pathak\\ University of Wisconsin--Green Bay}
-\date{October 20, 2026}
+\date{October 21, 2026}
 
 \begin{document}
 
@@ -65,13 +65,17 @@ slightly worse (3.26\,cm and 14.78\,cm), and the CNN, which corrects the weather
 drives the lake model, stayed almost identical to it (3.26\,cm and 14.76\,cm). Adding physics to
 the inputs did help: a snowpack model, driven by daily air temperature and precipitation over the
 land, improved the runoff forecast and brought the six-month error of the water-balance model
-down to 14.25\,cm, the best of all real forecasts at every horizon. When the
+down to 14.25\,cm. Two checks showed that gradient boosting was held back by its trees rather than
+by its inputs: settings tuned on 1950--1979 made it worse at five and six months, while a linear
+regression on the same features beat it at every horizon and, at 3.17\,cm and 14.06\,cm, was as
+accurate as the water balance with the snowpack. When the
 water-balance model was given the precipitation, evaporation and runoff that actually happened,
 its error dropped to 2.39\,cm and 8.49\,cm. This result shows us that the limit on forecast skill
 is the unknown future weather, not the flexibility or the detail of the model. Forecast ranges
 built from the weather of past years were too narrow on their own, but once the errors of the
 model itself were added, the 80\% and 95\% ranges held the observed level in 78--81\% and 95\% of
-the months. In the final section, we discuss the implications
+the months. If the supply data arrived one month late, the one-month error of the water-balance
+model rose from 3.22 to 4.15\,cm, no better than the seasonal climatology. In the final section, we discuss the implications
 of these findings and suggest ways to improve the forecasts.
 \end{abstract}
 
@@ -102,7 +106,9 @@ forecasting pipeline and to answer one narrow question: when forecasting the mon
 one to six months ahead, does machine learning beat simple baselines, and does it beat a
 physics-based water-balance model? Three follow-up questions are also asked: does a more detailed
 physical model do better, does a neural network do better when it is made to respect the
-physics, and does it help to add the physics of the snowpack on the land? Building knowledge of
+physics, and does it help to add the physics of the snowpack on the land? Two further checks ask
+whether gradient boosting was held back by its fixed settings or by its trees: a version with
+tuned settings, and a linear regression on the same features. Building knowledge of
 the physical process into a neural network has improved predictions of lake water
 temperature~\cite{read2019}. The comparison is meant to be
 honest, including the case where machine learning does not win.
@@ -137,6 +143,8 @@ forecast, but an upper bound on what the model could do. \\
 Snowpack & Water stored as snow on the land in winter, which reaches the lake when it melts. \\
 Rolling-origin backtest & The test used here: every model is fitted again on all the years before
 a test year and then forecasts that year, for each of the 44 test years. \\
+Tuning & Choosing the settings of a model by trying several of them on earlier years, here
+1950--1979 only, and keeping the best. \\
 RMSE & Root-mean-square error, the typical size of a forecast miss, in cm. \\
 Bootstrap interval & The range of plausible values of a difference between two models. If it
 includes zero, the two models cannot be told apart. \\
@@ -331,7 +339,8 @@ month), 1950--2023. The black line is a least-squares fit with a slope of 1.07 (
 
 \subsection{Feature Engineering}
 
-Feature engineering was only needed for the gradient boosting model, since the physics-based
+Feature engineering was only needed for the gradient boosting model and the linear regression
+that uses the same features (Section~\ref{sec:linear}), since the physics-based
 models take their inputs straight from the table and the CNN reads the raw monthly series
 (Section~\ref{sec:cnn}). The idea was to give the gradient boosting model
 the same information that the water-balance model sees, plus a longer memory. A total of 18
@@ -452,6 +461,8 @@ Water balance + snowpack & Physics & AR(1) + snowpack & 19 + 5 parameters & \ref
 Lake model + snowpack & Physics & AR(1) + snowpack & 17 + 5 parameters & \ref{sec:snow} \\
 Gradient boosting & Machine learning & Not needed & $6 \times 300$ trees & \ref{sec:gb} \\
 Gradient boosting + snowpack & Machine learning & Not needed & 5 parameters + $6 \times 300$ trees & \ref{sec:snow} \\
+Gradient boosting, tuned & Machine learning & Not needed & $6 \times 1000$ trees, settings tuned on 1950--1979 & \ref{sec:gb} \\
+Linear regression (same features) & Regression & Not needed & $6 \times 19$ coefficients & \ref{sec:linear} \\
 Hybrid & Physics + machine learning & AR(1) forecast & 19 coefficients + $6 \times 300$ trees & \ref{sec:hybrid} \\
 Physics-guided CNN & Physics + machine learning & AR(1), corrected by the CNN & 17 parameters + network weights & \ref{sec:cnn} \\
 Perfect forcing (two runs) & Upper bound & The observed weather & As the water balance or lake model & \ref{sec:wb}, \ref{sec:lake} \\
@@ -815,6 +826,55 @@ Random seed & 0 & Makes the results repeatable \\
 \end{tabular}
 \end{table}
 
+\textbf{Tuned Settings.} Fixed settings could simply be poor ones, so a second version of gradient
+boosting was tuned. Each of 36 combinations of the number of trees ($M = 100$, 300 or 1000), the
+learning rate ($\nu = 0.01$, 0.03 or 0.1) and the maximum depth (1, 2, 3 or 5) was run through
+the same rolling-origin backtest on 1950--1979 alone, with the test years 1965--1979, and the
+combination with the lowest RMSE averaged over the six horizons was kept. The other settings of
+Table~\ref{tab:gbsettings} stayed as they were. The test years from 1980 on played no part in the
+choice. The winner was 1000 trees of depth one with a learning rate of 0.01
+(Table~\ref{tab:tuning}), while the fixed settings ranked 16th of the 36. A tree of depth one asks
+a single question, so the tuned model is a sum of separate effects of single features, with no
+interactions between them. The best few combinations were within 0.1\,cm of each other, so the
+exact winner owes something to chance.
+
+\begin{table}[htbp]
+\centering
+\caption{The five best of the 36 settings of gradient boosting, and the fixed settings, in the
+backtest on 1950--1979 alone (test years 1965--1979). RMSE in cm; the mean is over the six
+horizons.}
+\label{tab:tuning}
+\small
+\begin{tabular}{||c|c|c|c|c|c|c|c||}
+\hline\hline
+Trees & Learning rate & Depth & $h=1$ & $h=3$ & $h=6$ & Mean & Rank \\
+\hline\hline
+1000 & 0.01 & 1 & 3.48 & 9.12 & 15.86 & 10.01 & 1 \\
+300 & 0.03 & 1 & 3.48 & 9.10 & 15.95 & 10.02 & 2 \\
+300 & 0.01 & 3 & 3.47 & 9.10 & 15.89 & 10.04 & 3 \\
+100 & 0.1 & 1 & 3.45 & 9.08 & 16.26 & 10.07 & 4 \\
+300 & 0.01 & 2 & 3.53 & 9.26 & 15.87 & 10.10 & 5 \\
+\hline
+300 & 0.03 & 3 & 3.56 & 9.47 & 17.25 & 10.57 & 16 \\
+\hline\hline
+\end{tabular}
+\end{table}
+
+\subsection{Linear Regression on the Same Features}
+\label{sec:linear}
+
+To see whether the trees gain anything from being non-linear, they were also replaced by an
+ordinary least-squares regression on the same 18 features, one for each horizon:
+\begin{equation}
+\hat y_{t,h} = \beta_{0,h} + \boldsymbol{\beta}_h^{\top} \mathbf{x}_t. \label{eq:linear}
+\end{equation}
+It has no settings to choose. It differs from the water-balance model in two ways: it predicts the
+change at each horizon directly instead of stepping forward one month at a time, and it reads the
+season from one sine and one cosine instead of twelve monthly constants. The three-month
+accumulated supply is the sum of the precipitation, evaporation and runoff features, so the
+features are not independent. The least-squares solution with the smallest coefficients was used,
+which does not change the forecasts.
+
 \subsection{Hybrid Model}
 \label{sec:hybrid}
 
@@ -833,7 +893,7 @@ Equations~\ref{eq:gb}--\ref{eq:hybrid}.
 
 \begin{table}[htbp]
 \centering
-\caption{Additional notation used in the gradient boosting and hybrid models.}
+\caption{Additional notation used in the gradient boosting, linear regression and hybrid models.}
 \label{tab:notation-gb}
 \renewcommand{\arraystretch}{1.3}
 \begin{tabular}{||c|l||}
@@ -847,6 +907,7 @@ $F_0$ & Average of the training targets \\
 $T_j$ & The $j$-th regression tree \\
 $\nu$ & Learning rate \\
 $r^{(j)}_i$ & Residual of training row $i$ that tree $j$ is fitted to \\
+$\beta_{0,h},\ \boldsymbol{\beta}_h$ & Intercept and weights of the linear regression for horizon $h$ \\
 $\hat y^{\,\mathrm{WB}}_{t,h}$ & Water-balance forecast of the level change \\
 $\hat y^{\,\mathrm{hyb}}_{t,h}$ & Hybrid forecast of the level change \\
 $F^{(h)}_M$ & Trees of the hybrid for horizon $h$, trained on the water-balance errors \\
@@ -1024,14 +1085,32 @@ forecasts, are strongly related to each other. Resampling whole blocks of neighb
 observations instead of single values is known as a block bootstrap~\cite{kunsch1989}.
 
 To see which inputs the gradient boosting model actually uses, its permutation importance was
-measured~\cite{breiman2001}. For this, the model was trained on 1950--2009 and scored on 2010--2023. One group of
-features $G$ was shuffled at a time, which destroys the information in that group while keeping
-its values realistic, and the increase in RMSE was recorded:
+measured~\cite{breiman2001} on all 44 test years, each forecast by the model that the backtest
+trained on the years before it. One group of features $G$ was shuffled at a time, which destroys
+the information in that group while keeping its values realistic, and the increase in RMSE was
+recorded. Most features have a strong seasonal cycle, so shuffling them across months would also
+scramble the time of year, and a model that reads the season from evaporation would then seem to
+rely on evaporation. To avoid this, every group except the season was swapped between whole test
+years, which keeps its seasonal cycle and destroys only its year-to-year information, while the
+season itself was shuffled across months. If $\mathrm{SSE}_y$ is the sum of the squared errors in
+test year $y$ and $\overline{\mathrm{SSE}}_y(G)$ the same sum with $G$ shuffled, averaged over 20
+shuffles, then
 \begin{equation}
-I_G = \frac{1}{20} \sum_{q=1}^{20} \mathrm{RMSE}_q\left(G \text{ shuffled}\right)
-- \mathrm{RMSE}\left(\text{nothing shuffled}\right). \label{eq:perm}
+I_G = \sqrt{\frac{1}{528} \sum_{y} \overline{\mathrm{SSE}}_y(G)}
+- \sqrt{\frac{1}{528} \sum_{y} \mathrm{SSE}_y}. \label{eq:perm}
 \end{equation}
+Its 95\% interval comes from resampling the test years 2,000 times, as in the bootstrap above.
 Table~\ref{tab:metrics} explains each of these metrics.
+
+Finally, the backtest assumes that $P$, $E$ and $R$ for month $t$ are known at the end of month
+$t$, but in practice these estimates are published later. To see what a delay costs, the
+backtest was repeated for the water-balance model, its snowpack version and gradient boosting as
+if the supply data, and the weather over the land, arrived $d = 1$, 2 or 3 months late, while the
+level, which is measured every day, was known at once. At each origin $t$, the missing months
+$t-d+1, \dots, t$ were filled in the way the water-balance model fills in the future: with the
+AR(1) forecast (Equation~\ref{eq:ar1}) from the last published month $t-d$, and for the snowpack
+with the average weather over the land. The models were fitted exactly as before, so only what is
+known at the origin changes. With $d = 0$ this repeats the main backtest and gives the same RMSE.
 
 \begin{table}[htbp]
 \centering
@@ -1083,8 +1162,8 @@ Table~\ref{tab:rmse} and Figure~\ref{fig:rmse} show the RMSE of every model at e
 \begin{table}[htbp]
 \centering
 \caption{RMSE of the forecast level (cm) by horizon $h$ in months, test years 1980--2023. Bold
-marks the best real forecast at each horizon (both are bold where two round to the same value).
-The last two rows use the observed future weather and are not real forecasts.}
+marks the best real forecast at each horizon. The last two rows use the observed future weather
+and are not real forecasts.}
 \label{tab:rmse}
 \begin{tabular}{||l|c|c|c|c|c|c||}
 \hline\hline
@@ -1092,13 +1171,15 @@ Model & $h=1$ & $h=2$ & $h=3$ & $h=4$ & $h=5$ & $h=6$ \\
 \hline\hline
 Persistence & 6.73 & 12.37 & 17.06 & 20.73 & 23.30 & 24.81 \\
 Seasonal climatology & 4.14 & 7.06 & 9.48 & 11.63 & 13.53 & 15.27 \\
-Water balance & \textbf{3.22} & 6.33 & 8.82 & 11.03 & 12.96 & 14.66 \\
-Water balance + snowpack & \textbf{3.22} & \textbf{6.26} & \textbf{8.67} & \textbf{10.79}
-& \textbf{12.66} & \textbf{14.25} \\
+Water balance & 3.22 & 6.33 & 8.82 & 11.03 & 12.96 & 14.66 \\
+Water balance + snowpack & 3.22 & \textbf{6.26} & \textbf{8.67} & 10.79 & 12.66 & 14.25 \\
 Lake model & 3.26 & 6.38 & 8.88 & 11.12 & 13.08 & 14.78 \\
 Lake model + snowpack & 3.25 & 6.30 & 8.73 & 10.89 & 12.79 & 14.40 \\
 Gradient boosting & 3.32 & 6.51 & 9.12 & 11.40 & 13.48 & 15.39 \\
 Gradient boosting + snowpack & 3.31 & 6.49 & 9.02 & 11.30 & 13.55 & 15.14 \\
+Gradient boosting, tuned & 3.42 & 6.45 & 8.93 & 11.51 & 14.04 & 16.09 \\
+Linear regression (same features) & \textbf{3.17} & 6.37 & 8.74 & \textbf{10.74} & \textbf{12.49}
+& \textbf{14.06} \\
 Hybrid (water balance + boosting) & 3.26 & 6.35 & 8.95 & 11.18 & 13.00 & 14.58 \\
 Physics-guided CNN & 3.26 & 6.37 & 8.87 & 11.10 & 13.05 & 14.76 \\
 \hline\hline
@@ -1113,7 +1194,8 @@ Lake model, perfect forcing & 2.51 & 3.93 & 5.29 & 6.55 & 7.73 & 8.83 \\
 \includegraphics[width=\textwidth]{fig3_rmse_by_horizon.png}
 \caption{Left: RMSE of the forecast level by horizon for every model; the dashed lines use the
 observed future weather and are not real forecasts. Right: reduction in RMSE relative to the
-seasonal climatology.}
+seasonal climatology. The legend applies to both panels. Tuned gradient boosting (dotted) and the
+linear regression on the same features (dash-dot) share the orange of gradient boosting.}
 \label{fig:rmse}
 \end{figure}
 
@@ -1137,12 +1219,22 @@ water-balance model at every horizon, by 0.05\,cm at one month and 0.12\,cm at s
 the lake model at every horizon, but by at most 0.03\,cm (Section~\ref{sec:cnnresult}).
 \item \textbf{The Snowpack Helped}: Adding the snowpack to the runoff forecast lowered the RMSE of
 the water-balance model at every horizon, by 0.08\,cm at two months and 0.41\,cm at six months,
-from 14.66 to 14.25\,cm. This made it the best real forecast at every horizon, and its reduction
-over the seasonal climatology at four to six months rose from 4--5\% to 6--7\%. The lake model
-gained almost as much, from 14.78 to 14.40\,cm at six months.
+from 14.66 to 14.25\,cm. This made it the best physical model at every horizon and the best real
+forecast at two and three months, and its reduction over the seasonal climatology at four to six
+months rose from 4--5\% to 6--7\%. The lake model gained almost as much, from 14.78 to 14.40\,cm
+at six months.
 \item \textbf{Gradient Boosting Gained Less from the Snowpack}: Given the simulated snowpack as two
 extra features, gradient boosting improved at five of the six horizons, most at six months (from
 15.39 to 15.14\,cm), but it stayed behind the water-balance model at every horizon.
+\item \textbf{Tuning Made Gradient Boosting Worse}: With the settings that did best on 1950--1979,
+gradient boosting improved at two and three months, to 6.45 and 8.93\,cm, but got worse at the
+other horizons, most at six months, from 15.39 to 16.09\,cm. That is worse than the seasonal
+climatology.
+\item \textbf{A Linear Regression on the Same Features Did Best}: Replacing the trees with a linear
+regression on the same 18 features lowered the RMSE of gradient boosting at every horizon, from
+3.32 to 3.17\,cm at one month and from 15.39 to 14.06\,cm at six months. It was the best real
+forecast at one month and at four to six months, ahead of the water balance with the snowpack by
+0.04--0.19\,cm, while the water balance with the snowpack was best at two and three months.
 \item \textbf{The Weather Sets the Limit}: With the observed future weather, the same
 water-balance model reached 2.39\,cm at one month and 8.49\,cm at six months. That is 26\% lower
 than the real water-balance forecast at one month and 40--43\% lower at two to six months. The
@@ -1154,7 +1246,8 @@ far larger than any gap between the models.
 \subsection{Is the Difference Real?}
 
 Table~\ref{tab:boot} shows the bootstrap comparison for the four most important pairs of models
-from the first question, and Table~\ref{tab:boot2} shows it for the two new models.
+from the first question, and Table~\ref{tab:boot2} shows it for the lake model, the CNN and the
+snowpack.
 
 \begin{table}[htbp]
 \centering
@@ -1192,7 +1285,7 @@ Gradient boosting is clearly better than the seasonal climatology only at one an
 
 \begin{table}[htbp]
 \centering
-\caption{Difference in RMSE (cm) for the new models, with the 95\% bootstrap interval in
+\caption{Difference in RMSE (cm) for the lake model, the CNN and the snowpack, with the 95\% bootstrap interval in
 brackets. WB is the water-balance model, Lake the lake model and Snow the snowpack version of
 each. A negative value means the first model is better.}
 \label{tab:boot2}
@@ -1227,6 +1320,46 @@ sampling uncertainty, but it is negative at every horizon for both models. For g
 the snowpack changed the RMSE by $-0.25$ to $+0.07$\,cm, and every interval includes zero (at six
 months, $-0.25$\,cm with the interval $[-0.69,\ 0.25]$), so its gain cannot be told apart from
 luck.
+
+Table~\ref{tab:boot3} shows the same comparison for the two checks on gradient boosting.
+
+\begin{table}[htbp]
+\centering
+\caption{Difference in RMSE (cm) for the two checks on gradient boosting, with the 95\% bootstrap
+interval in brackets. GB is gradient boosting, Tuned its tuned version, Linear the linear
+regression on the same features and WB + Snow the water-balance model with the snowpack. A
+negative value means the first model is better.}
+\label{tab:boot3}
+\small
+\begin{tabular}{||c|c|c|c|c||}
+\hline\hline
+Horizon & Tuned $-$ GB & Tuned $-$ WB & Linear $-$ GB & Linear $-$ WB + Snow \\
+\hline\hline
+1 & $+0.10$\ \ $[-0.03,\ 0.22]$ & $+0.20$\ \ $[0.08,\ 0.32]$ & $-0.15$\ \ $[-0.27,\ -0.03]$
+& $-0.04$\ \ $[-0.15,\ 0.08]$ \\
+2 & $-0.07$\ \ $[-0.24,\ 0.11]$ & $+0.12$\ \ $[-0.14,\ 0.37]$ & $-0.14$\ \ $[-0.38,\ 0.10]$
+& $+0.11$\ \ $[-0.12,\ 0.35]$ \\
+3 & $-0.18$\ \ $[-0.43,\ 0.10]$ & $+0.12$\ \ $[-0.23,\ 0.43]$ & $-0.37$\ \ $[-0.76,\ 0.06]$
+& $+0.08$\ \ $[-0.26,\ 0.42]$ \\
+4 & $+0.10$\ \ $[-0.28,\ 0.47]$ & $+0.48$\ \ $[-0.04,\ 0.99]$ & $-0.67$\ \ $[-1.11,\ -0.22]$
+& $-0.06$\ \ $[-0.57,\ 0.43]$ \\
+5 & $+0.56$\ \ $[0.12,\ 1.01]$ & $+1.08$\ \ $[0.42,\ 1.74]$ & $-0.99$\ \ $[-1.57,\ -0.47]$
+& $-0.17$\ \ $[-0.82,\ 0.48]$ \\
+6 & $+0.70$\ \ $[0.08,\ 1.27]$ & $+1.43$\ \ $[0.69,\ 2.21]$ & $-1.33$\ \ $[-2.05,\ -0.58]$
+& $-0.19$\ \ $[-1.00,\ 0.55]$ \\
+\hline\hline
+\end{tabular}
+\end{table}
+
+Tuning made gradient boosting clearly worse at five and six months, where the whole interval
+lies above zero, and at the other horizons the change is within the sampling uncertainty. The
+settings that did best on 1965--1979 did not carry over to the later years. The linear
+regression, on the other hand, was better than gradient boosting at every horizon, and clearly so
+at one month and at four to six months. It cannot be told apart from the water balance with the
+snowpack at any horizon, nor from the plain water-balance model, against which its differences
+range from $-0.60$ to $+0.04$\,cm. It is, however, the only model whose interval against the
+seasonal climatology lies below zero at all six horizons. For the water-balance model, with or
+without the snowpack, this holds only at one to three months.
 
 \subsection{What the Water-Balance Model Learned}
 
@@ -1379,21 +1512,31 @@ coming weather.
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{fig4_feature_importance.png}
-\caption{Permutation importance for the gradient boosting model, trained on 1950--2009 and scored
-on 2010--2023. Each bar shows how much the RMSE increases when one group of features is
-shuffled.}
+\caption{Permutation importance for the gradient boosting model over the 44 test years
+1980--2023, each forecast by the model trained on the years before it. Each bar shows how much
+the RMSE increases when one group of features is shuffled, and the black line its 95\% interval.
+Every group except the season was swapped between whole years, so it kept its seasonal cycle.}
 \label{fig:importance}
 \end{figure}
 
-At one month ahead, the model relies on recent runoff, the season, evaporation, the latest level
-change and precipitation, in that order (Figure~\ref{fig:importance}). This matches the physics:
-by Equation~\ref{eq:twomonth}, last month's supply is still working its way into this month's
-mean level. At three months the model is dominated by the season. At six months the largest
-group is evaporation and not the season, but evaporation has such a strong seasonal cycle
-(Figure~\ref{fig:data}) that the model is most likely using it as another way of reading the
-time of year. Permutation importance cannot separate features that carry the same information,
-so the order among the seasonal features should not be over-interpreted. The clear finding is
-that at longer horizons the model has learned the seasonal cycle and little else.
+At one month ahead, the model relies on the season, then on recent runoff and precipitation, on
+the latest level changes and, a little, on the current level (Figure~\ref{fig:importance}). This
+matches the physics: by Equation~\ref{eq:twomonth}, last month's supply is still working its way
+into this month's mean level. At three months the model is dominated by the season, which adds
+almost 10\,cm to the error when it is shuffled, against at most 0.51\,cm for any other group. At
+six months the recent level changes matter almost as much as the season, followed by runoff,
+while the intervals of the current level, precipitation and evaporation all include zero. The
+supply accumulated over 3--12 months did not matter at any horizon.
+
+Because whole years were swapped, evaporation kept its strong seasonal cycle
+(Figure~\ref{fig:data}), and it then added at most 0.33\,cm, with an interval that includes zero at
+every horizon. So the model took little from evaporation beyond the time of year. The same
+effect works the other way for the season itself. When the two season features are shuffled,
+the model can still read the time of year from the seasonal cycles of the other inputs, which the
+year swaps leave in place, so the season bar is a lower bound on how much the model relies on the
+calendar. This is the most likely reason why it is so much smaller at six months than at three.
+The clear finding is that beyond one month the model has learned mainly the seasonal cycle, plus
+some of the persistence in the recent level changes.
 
 \subsection{Case Study: The 2013 Low to the 2020 High}
 
@@ -1487,11 +1630,74 @@ years. At six months the observed level rose above the 95\% range in three month
 of 2019, the steepest climbs of the record, and fell below it in five months of 2012, the year
 before the record low.
 
+\subsection{What Do Data Delays Cost?}
+\label{sec:delayresult}
+
+Table~\ref{tab:delay} shows what happens to four of the models when the supply data and the
+weather over the land arrive one to three months late.
+
+\begin{table}[htbp]
+\centering
+\caption{RMSE of the forecast level (cm) when $P$, $E$, $R$ and the weather over the land arrive
+$d$ months late, test years 1980--2023. The level is known at once. $d = 0$ is the main backtest
+(Table~\ref{tab:rmse}).}
+\label{tab:delay}
+\small
+\begin{tabular}{||l|c|c|c|c|c|c|c||}
+\hline\hline
+Model & $d$ & $h=1$ & $h=2$ & $h=3$ & $h=4$ & $h=5$ & $h=6$ \\
+\hline\hline
+Water balance & 0 & 3.22 & 6.33 & 8.82 & 11.03 & 12.96 & 14.66 \\
+& 1 & 4.15 & 7.08 & 9.50 & 11.61 & 13.45 & 15.11 \\
+& 2 & 4.19 & 7.14 & 9.56 & 11.67 & 13.51 & 15.18 \\
+& 3 & 4.21 & 7.16 & 9.58 & 11.69 & 13.54 & 15.22 \\
+\hline
+Water balance + snowpack & 0 & 3.22 & 6.26 & 8.67 & 10.79 & 12.66 & 14.25 \\
+& 1 & 4.14 & 7.04 & 9.43 & 11.49 & 13.26 & 14.87 \\
+& 2 & 4.18 & 7.12 & 9.54 & 11.61 & 13.43 & 15.07 \\
+& 3 & 4.21 & 7.15 & 9.57 & 11.68 & 13.52 & 15.16 \\
+\hline
+Gradient boosting & 0 & 3.32 & 6.51 & 9.12 & 11.40 & 13.48 & 15.39 \\
+& 1 & 3.95 & 6.95 & 9.50 & 11.77 & 13.78 & 15.76 \\
+& 2 & 3.94 & 6.94 & 9.53 & 11.73 & 13.85 & 15.71 \\
+& 3 & 3.93 & 6.87 & 9.51 & 11.76 & 13.70 & 15.31 \\
+\hline
+Linear regression (same features) & 0 & 3.17 & 6.37 & 8.74 & 10.74 & 12.49 & 14.06 \\
+& 1 & 4.12 & 7.06 & 9.41 & 11.17 & 12.71 & 14.23 \\
+& 2 & 4.09 & 7.04 & 9.46 & 11.33 & 12.96 & 14.47 \\
+& 3 & 4.10 & 7.06 & 9.56 & 11.54 & 13.24 & 14.75 \\
+\hline\hline
+\end{tabular}
+\end{table}
+
+A delay of one month costs the most at one month ahead. The water-balance model goes from 3.22
+to 4.15\,cm and its snowpack version from 3.22 to 4.14\,cm, which is no better than the seasonal
+climatology (4.14\,cm). Equation~\ref{eq:twomonth} explains why: half of the change in next
+month's mean level comes from this month's supply, and a one-month delay hides exactly that month.
+The linear regression loses its one-month lead in the same way, going from 3.17 to 4.12\,cm.
+Gradient boosting loses less, from 3.32 to 3.95\,cm, so with any delay it was the most accurate of
+the four at one month. Further months of delay cost little more at one month, because the AR(1)
+forecast that fills in the missing months forgets the last known anomaly within a month or two
+anyway (Table~\ref{tab:coef}).
+
+At six months the delay costs less, but for the water-balance models and the linear regression the
+cost grows with every month of delay. With a delay of
+one month the water-balance model goes from 14.66 to 15.11\,cm and its snowpack version from
+14.25 to 14.87\,cm, and with three months to 15.22 and 15.16\,cm, close to the 15.27\,cm of the
+seasonal climatology. The snowpack version loses more, because its snowpack then has to be built
+from average weather for the missing months. The linear regression loses the least, from 14.06
+to 14.23\,cm with a delay of one month and to 14.75\,cm with three, so it stays the most accurate
+of the four at four to six months whatever the delay. The six-month error of gradient boosting
+rose to 15.76\,cm with a delay of one month but was back to 15.31\,cm with three, slightly below
+the 15.39\,cm without delay, which shows that differences of a few tenths of a centimeter are
+within the noise of these numbers. The differences in this table were not tested with the
+bootstrap.
+
 \section{Discussion}
 \label{sec:discussion}
 
-The results of this case study point to one main finding: the forecasts improved only when
-better physical information was added to the inputs. More flexibility (gradient boosting, the
+The results of this case study point to one main finding: the forecasts improved when better
+information was added to the inputs, and not when the model became more flexible. More flexibility (gradient boosting, the
 hybrid and the CNN) did not improve on the simple water-balance regression, and neither did more
 physical detail in the lake itself (the lake model). Adding the snowpack on the land did. The
 reason the flexible models did not help can be seen in the physics. Equation~\ref{eq:bathtub} is linear in the supply terms, so a linear regression with
@@ -1499,6 +1705,20 @@ the right inputs already has the correct shape. The trees have to rediscover tha
 a few hundred training months, and they have nothing to gain from being non-linear. The hybrid
 model shows the same thing from the other side: when the trees were asked only for what the
 water-balance model missed, they found nothing systematic.
+
+The two checks on gradient boosting confirm this directly. A linear regression on exactly the same
+18 features beat the trees at every horizon, by 1.33\,cm at six months, and was as accurate as the
+best physical model. So the features held the information, and the trees lost some of it by being
+flexible. Tuning did not rescue the trees either. On 1965--1979 the best settings were trees of
+depth one, which add up separate effects of single features and so come closest to a linear
+model, yet on the test years they did worse than the fixed settings at five and six months. The
+best few settings were within 0.1\,cm of each other on 1965--1979, so the choice rested on small
+differences in only 15 years, and it did not carry over. With so few independent years, a model
+with many settings is hard to tune without fitting the years it is tuned on. The edge of the linear
+regression over the water-balance model at four to six months, 0.29--0.60\,cm, is within the
+sampling uncertainty. If it is real, it may come from forecasting each horizon directly, which
+lets the regression learn how much of the current state of the lake carries over several months,
+instead of chaining one-month steps driven by an AR(1) weather forecast.
 
 The lake model shows that more physical detail is not automatically better. Its curved outflow
 and its direct treatment of monthly means are closer to how the lake works, yet it was slightly
@@ -1539,6 +1759,14 @@ narrow, most of all at one month. Once the errors of the model itself are added,
 the observed level about as often as they should, which makes them a useful way to report how
 uncertain each forecast is.
 
+The delay test shows that the main backtest is the best case. In real time the supply estimates
+arrive late, and then most of the one-month skill beyond the seasonal cycle is lost, because it
+came from knowing the supply of the latest month. At six months the cost is smaller, and the two
+models that also read the recent level changes lost less with a delay of one month (0.17\,cm for
+the linear regression and 0.37\,cm for gradient boosting, against 0.45 and 0.62\,cm for the two
+water-balance models). A likely reason is that the level, which is measured every day, already
+reflects part of the supply of the missing months.
+
 This study also has some limitations:
 \label{sec:limitations}
 \begin{enumerate}
@@ -1563,19 +1791,22 @@ This is a
 sign of slow changes that a model trained on earlier decades does not fully capture.
 \item \textbf{Level Resolution}: Levels are reported to the nearest centimeter, which adds a
 small amount of rounding noise to the monthly changes.
-\item \textbf{Few Machine Learning Models}: Only two algorithms were tested, gradient boosting and
-a small CNN, each with one fixed setting and on a few hundred training months. The result shows
-that a reasonable off-the-shelf model, and a small network built around the physics, do not beat
-the water-balance model here. It does not show that no machine learning approach could.
+\item \textbf{Few Machine Learning Models}: Only two machine learning algorithms were tested,
+gradient boosting and a small CNN, on a few hundred training months. Gradient boosting was run
+with fixed settings and with settings tuned on 1950--1979, and the settings of the CNN were chosen
+on 1950--1979, but a wider search, or tuning on more years, might do better. The result shows that
+a reasonable off-the-shelf model, and a small network built around the physics, do not beat the
+water-balance model here. It does not show that no machine learning approach could.
 \item \textbf{Simple Snowpack Model}: The snowpack is simulated, not measured. The model uses a
 fixed 0\,$^\circ$C threshold between rain and snow, one melt factor for both basins and one store
 for all of the land, and its gain only clearly exceeds the sampling uncertainty at six months.
 \item \textbf{Forecast Ranges}: The ranges were built for the water-balance model only, and their
 model-error part assumes that the errors of the training years carry over unchanged. They still
 miss in the most unusual years, such as 2012 and 2014.
-\item \textbf{Data Delay}: $P$, $E$ and $R$ for month $t$ are assumed to be known at the end of
-month $t$. In practice these estimates are published later, so the real-time skill would be
-somewhat lower.
+\item \textbf{Data Delay}: The main results assume that $P$, $E$ and $R$ for month $t$ are known
+at the end of month $t$. Section~\ref{sec:delayresult} shows what a delay of one to three months
+costs, but the actual delay of each data set was not checked, and the missing months were filled
+in only with the AR(1) forecast.
 \end{enumerate}
 
 \section{Conclusion}
@@ -1584,16 +1815,22 @@ somewhat lower.
 This case study built a complete forecasting pipeline for the monthly level of Lake
 Michigan--Huron and compared machine learning models with models built on the physics of the
 lake. No more flexible or more detailed model was clearly more accurate than a 19-parameter
-water-balance regression at any horizon from one to six months: not gradient boosting, not a
-hybrid of the two, not a 17-parameter lake model with a curved outflow, and not a CNN that
-corrects the weather driving that lake model. What did help was better physics in the inputs: a
-simulated snowpack on the land improved the runoff forecast and lowered the six-month error of
-the water-balance model from 14.66 to 14.25\,cm, which made it the best real forecast at every
-horizon. Most of the improvement over persistence came from the seasonal cycle. Ranges built from
+water-balance regression at any horizon from one to six months: not gradient boosting, with fixed
+or with tuned settings, not a hybrid of the two, not a 17-parameter lake model with a curved
+outflow, and not a CNN that corrects the weather driving that lake model. What did help was better
+physics in the inputs: a simulated snowpack on the land improved the runoff forecast and lowered
+the six-month error of the water-balance model from 14.66 to 14.25\,cm, which made it the best
+physical model at every horizon. A plain linear regression on the gradient boosting features did
+as well, with the lowest error at one month and at four to six months (3.17 and 14.06\,cm at one
+and six months), though not by more than the sampling uncertainty. Since it beat the trees on the
+same features at every horizon, what held gradient boosting back was its flexibility, not its
+inputs. Most of the improvement over persistence came from the seasonal cycle. Knowing the recent
+supply added a further 22\% at one month and little beyond three months, and a delay of one month
+in the supply data took that one-month gain away from the water-balance models. Ranges built from
 the weather of past years and the errors of the model itself held the observed level about as
-often as they should, so every forecast can come with an honest measure of its uncertainty. Knowing the recent supply added a further 22\% at one month and little beyond three
-months. The run with the observed weather showed that the error could be cut by more than 40\%
-at two to six months if the future precipitation, evaporation and runoff were known.
+often as they should, so every forecast can come with an honest measure of its uncertainty. The
+run with the observed weather showed that the error could be cut by more than 40\% at two to six
+months if the future precipitation, evaporation and runoff were known.
 
 The practical lesson is that the next improvement is more likely to come from better inputs than
 from a more flexible or a more detailed model. The snowpack result supports this: the one
@@ -1601,7 +1838,9 @@ physical addition to the inputs improved the forecasts, while the additions to t
 not. Further useful inputs would be seasonal climate forecasts of precipitation and temperature,
 measured snow on the ground, the lake surface temperature and ice cover (which control
 evaporation), and measured flows in the connecting rivers, which would also let the lake model
-make use of its physical structure. Machine learning may well earn its place once those inputs are available, and this
+make use of its physical structure. Two natural next steps also follow from this study: adding the
+snowpack to the linear regression, and letting the water-balance model use the observed level
+changes, which are not delayed. Machine learning may well earn its place once those inputs are available, and this
 backtest gives the baseline to test it against.
 
 \begin{thebibliography}{99}
@@ -1750,8 +1989,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
+from joblib import Parallel, delayed
 from scipy.optimize import least_squares
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.linear_model import LinearRegression
 from torch import nn
 
 
@@ -2030,7 +2271,7 @@ class SnowLakeModel(SnowForcing, LakeModel):
     pass
 \end{lstlisting}
 
-\begin{lstlisting}[caption={Features, gradient boosting and the hybrid}]
+\begin{lstlisting}[caption={Features, gradient boosting, the linear regression, the tuned settings and the hybrid}]
 def make_features(df):
     f = pd.DataFrame(index=df.index)
     f["level"] = df["level_m"] - LEVEL_REF_M
@@ -2054,11 +2295,14 @@ class GradientBoosting:
     params = dict(n_estimators=300, learning_rate=0.03, max_depth=3,
                   subsample=0.8, min_samples_leaf=5, random_state=0)
 
-    def __init__(self, base=None):
-        self.base = base
+    def __init__(self, base=None, **params):
+        self.base, self.params = base, {**self.params, **params}
 
     def _features(self, df):
         return make_features(df)
+
+    def _regressor(self):
+        return GradientBoostingRegressor(**self.params)
 
     def fit(self, train):
         self.models_ = {}
@@ -2073,7 +2317,7 @@ class GradientBoosting:
             target = y[rows].to_numpy()
             if self.base is not None:
                 target = target - self.base.predict(train, origins, [h])[:, 0]
-            self.models_[h] = GradientBoostingRegressor(**self.params).fit(
+            self.models_[h] = self._regressor().fit(
                 feats.loc[origins], target
             )
         return self
@@ -2095,6 +2339,15 @@ class SnowGradientBoosting(GradientBoosting):
 
     def _features(self, df):
         return make_features(df).join(self.snow_.snowpack(df).add_prefix("snowpack_"))
+
+
+class LinearFeatures(GradientBoosting):
+    def _regressor(self):
+        return LinearRegression()
+
+
+GB_GRID = [dict(n_estimators=n, learning_rate=lr, max_depth=d) for n in (100, 300, 1000) for lr in (0.01, 0.03, 0.1) for d in (1, 2, 3, 5)]
+GB_TUNED = dict(n_estimators=1000, learning_rate=0.01, max_depth=1)  # the best of GB_GRID in tune_gb(df)
 \end{lstlisting}
 
 \begin{lstlisting}[caption={Physics-guided CNN and the list of models}]
@@ -2166,6 +2419,8 @@ def all_models():
         "Lake model + snowpack": SnowLakeModel(),
         "Gradient boosting": GradientBoosting(),
         "Gradient boosting + snowpack": SnowGradientBoosting(),
+        "Gradient boosting, tuned": GradientBoosting(**GB_TUNED),
+        "Linear regression (same features)": LinearFeatures(),
         "Hybrid (WB + GB residual)": GradientBoosting(base=WaterBalance()),
         "Physics-guided CNN": PhysicsCNN(),
         "WB, perfect forcing (upper bound)": WaterBalance(perfect_forcing=True),
@@ -2173,17 +2428,17 @@ def all_models():
     }
 \end{lstlisting}
 
-\begin{lstlisting}[caption={Rolling-origin backtest, RMSE and the bootstrap}]
+\begin{lstlisting}[caption={Rolling-origin backtest, RMSE, the bootstrap, tuning gradient boosting and data delays}]
 HORIZONS = [1, 2, 3, 4, 5, 6]
 FIRST_TEST_YEAR = 1980  # leaves 30 years (1950-79) for the first training set
 
 
-def backtest(df, first_test_year=FIRST_TEST_YEAR, verbose=True):
+def backtest(df, first_test_year=FIRST_TEST_YEAR, make_models=all_models, verbose=True):
     rows = []
     for year in range(first_test_year, df.index.max().year + 1):
         train = df.loc[: f"{year - 1}-12"]
         targets = df.loc[f"{year}-01":f"{year}-12"].index
-        models = {name: m.fit(train) for name, m in all_models().items()}
+        models = {name: m.fit(train) for name, m in make_models().items()}
         for h in HORIZONS:
             origins = targets - h
             start = df.loc[origins, "level_m"].to_numpy()
@@ -2227,6 +2482,30 @@ def bootstrap_rmse_diff(preds, model_a, model_b, n_boot=2000, seed=0):
         lo, hi = np.percentile(boots, [2.5, 97.5])
         out[h] = {"diff_cm": diff(np.arange(len(years))), "ci_low": lo, "ci_high": hi}
     return pd.DataFrame(out).T.rename_axis("horizon")
+
+
+def tune_gb(df, first_test_year=1965, last_year=1979):
+    runs = Parallel(n_jobs=-1)(delayed(backtest)(df.loc[: f"{last_year}-12"], first_test_year, lambda p=p: {str(p): GradientBoosting(**p)}, False)
+                               for p in GB_GRID)
+    return rmse_table(pd.concat(runs))
+
+
+def delay_backtest(df, delay, names=("Water balance", "Water balance + snowpack", "Gradient boosting", "Linear regression (same features)")):
+    rows = []
+    for year in range(FIRST_TEST_YEAR, df.index.max().year + 1):
+        train = df.loc[: f"{year - 1}-12"]
+        models = {n: m.fit(train) for n, m in all_models().items() if n in names}
+        wb, land = WaterBalance()._fit_forcing(train), train[LAND].groupby(month_of(train.index)).mean()
+        for origin in pd.period_range(f"{year - 1}-07", f"{year}-11", freq="M"):
+            gap, known, hs = pd.period_range(origin - delay + 1, origin, freq="M"), df.copy(), [h for h in HORIZONS if (origin + h).year == year]
+            if delay:  # unpublished months: the AR(1) forecast from the last published month, and the average weather over the land
+                known.loc[gap, COMPONENTS] = np.vstack([wb._forcing(df, pd.PeriodIndex([origin - delay]), k, False) for k in range(1, delay + 1)])
+                known.loc[gap, LAND] = land.loc[gap.month].to_numpy()
+                known["nbs_mm"] = known["precip_mm"] - known["evap_mm"] + known["runoff_mm"]
+            for n, m in models.items():
+                rows += [dict(model=n, horizon=h, error_cm=(df.at[origin, "level_m"] + c / 1000 - df.at[origin + h, "level_m"]) * 100)
+                         for h, c in zip(hs, m.predict(known, pd.PeriodIndex([origin]), hs)[0])]
+    return rmse_table(pd.DataFrame(rows).sort_values("horizon", kind="stable"))
 \end{lstlisting}
 
 \begin{lstlisting}[caption={Forecast ranges}]
@@ -2276,29 +2555,29 @@ FEATURE_GROUPS = {
 }
 
 
-def permutation_importance(df, split_year=2010, n_repeats=20, seed=0):
-    rng = np.random.default_rng(seed)
-    model = GradientBoosting().fit(df.loc[: f"{split_year - 1}-12"])
-    feats = make_features(df)
-    rows = {}
+def permutation_importance(df, n_repeats=20, n_boot=2000, seed=0):
+    rng, feats, years = np.random.default_rng(seed), make_features(df), np.arange(FIRST_TEST_YEAR, df.index.max().year + 1)
+    models, targets = {y: GradientBoosting().fit(df.loc[: f"{y - 1}-12"]) for y in years}, df.loc[f"{FIRST_TEST_YEAR}-01":].index
+    boot, rows = rng.integers(0, len(years), (n_boot, len(years))), []
     for h in (1, 3, 6):
-        targets = df.loc[f"{split_year}-01":].index
-        origins = targets - h
-        x = feats.loc[origins]
-        y = (df.loc[targets, "level_m"].to_numpy() - df.loc[origins, "level_m"].to_numpy()) * 1000
+        x, y = feats.loc[targets - h], _future_change(df, h).loc[targets - h].to_numpy()
 
-        def rmse_cm(frame):
-            return np.sqrt(np.mean((model.models_[h].predict(frame) - y) ** 2)) / 10
+        def sse(frame):  # squared error (mm^2) of each test year, forecast by the model trained on the years before it
+            return ((np.concatenate([models[yr].models_[h].predict(frame[targets.year == yr]) for yr in years]) - y) ** 2).reshape(len(years), 12).sum(1)
 
-        base = rmse_cm(x)
+        base = sse(x)
         for group, cols in FEATURE_GROUPS.items():
-            increases = []
+            shuffled = []
             for _ in range(n_repeats):
-                shuffled = x.copy()
-                shuffled[cols] = x[cols].to_numpy()[rng.permutation(len(x))]
-                increases.append(rmse_cm(shuffled) - base)
-            rows[(h, group)] = np.mean(increases)
-    return pd.Series(rows).unstack(0)
+                s = x.copy()  # the season is shuffled between months; the other groups are swapped between whole years
+                s[cols] = (x[cols].to_numpy()[rng.permutation(len(x))] if group == "Season (month)"
+                           else x[cols].to_numpy().reshape(len(years), 12, -1)[rng.permutation(len(years))].reshape(len(x), -1))
+                shuffled.append(sse(s))
+            shuffled = np.mean(shuffled, 0)
+            gain = lambda i: (np.sqrt(shuffled[i].sum(-1) / (12 * i.shape[-1])) - np.sqrt(base[i].sum(-1) / (12 * i.shape[-1]))) / 10
+            rows.append(dict(horizon=h, group=group, importance_cm=gain(np.arange(len(years))),
+                             **dict(zip(["ci_low", "ci_high"], np.percentile(gain(boot), [2.5, 97.5])))))
+    return pd.DataFrame(rows)
 \end{lstlisting}
 
 \end{document}

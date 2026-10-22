@@ -1,0 +1,17 @@
+delay,model,1,2,3,4,5,6
+0,Water balance,3.219,6.333,8.816,11.026,12.965,14.662
+0,Water balance + snowpack,3.215,6.257,8.665,10.792,12.656,14.253
+0,Gradient boosting,3.323,6.514,9.116,11.403,13.485,15.394
+0,Linear regression (same features),3.174,6.370,8.742,10.736,12.490,14.060
+1,Water balance,4.151,7.078,9.500,11.612,13.451,15.107
+1,Water balance + snowpack,4.140,7.039,9.426,11.491,13.261,14.870
+1,Gradient boosting,3.949,6.950,9.498,11.766,13.785,15.760
+1,Linear regression (same features),4.117,7.057,9.410,11.174,12.713,14.232
+2,Water balance,4.189,7.142,9.564,11.673,13.514,15.184
+2,Water balance + snowpack,4.183,7.125,9.542,11.611,13.430,15.066
+2,Gradient boosting,3.938,6.940,9.531,11.732,13.851,15.714
+2,Linear regression (same features),4.088,7.044,9.463,11.327,12.959,14.471
+3,Water balance,4.206,7.161,9.583,11.694,13.543,15.216
+3,Water balance + snowpack,4.205,7.155,9.570,11.681,13.520,15.164
+3,Gradient boosting,3.930,6.874,9.505,11.755,13.703,15.310
+3,Linear regression (same features),4.097,7.062,9.559,11.539,13.238,14.750
